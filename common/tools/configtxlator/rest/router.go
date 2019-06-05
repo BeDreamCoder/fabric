@@ -35,6 +35,18 @@ func NewRouter() *mux.Router {
 	router.
 		HandleFunc("/configtxlator/config/verify", SanityCheckConfig).
 		Methods("POST")
+	router.
+		HandleFunc("/configtxlator/upload", UploadMspFiles).
+		Methods("POST")
+	router.
+		HandleFunc("/configtxgen/genesis-block", OutputGenesisBlock).
+		Methods("POST")
+	router.
+		HandleFunc("/configtxgen/channel-create-tx", OutputChannelCreateTx).
+		Methods("POST")
+	router.
+		HandleFunc("/configtxgen/print-org", PrintOrg).
+		Methods("POST")
 
 	return router
 }

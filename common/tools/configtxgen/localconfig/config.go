@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package localconfig
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -247,6 +248,43 @@ func LoadTopLevel(configPaths ...string) *TopLevel {
 	return &uconf
 }
 
+func LoadTopLevelFromBytes(configtx []byte, configPaths ...string) *TopLevel {
+	config := viper.New()
+	if len(configPaths) > 0 {
+		for _, p := range configPaths {
+			config.AddConfigPath(p)
+		}
+		config.SetConfigName(configName)
+	} else {
+		cf.InitViper(config, configName)
+	}
+
+	// For environment variables
+	config.SetEnvPrefix(Prefix)
+	config.AutomaticEnv()
+
+	replacer := strings.NewReplacer(".", "_")
+	config.SetEnvKeyReplacer(replacer)
+
+	err := config.ReadConfig(bytes.NewReader(configtx))
+	if err != nil {
+		logger.Panic("Error reading configuration: ", err)
+	}
+	logger.Debugf("Using config file: %s", config.ConfigFileUsed())
+
+	var uconf TopLevel
+	err = viperutil.EnhancedExactUnmarshal(config, &uconf)
+	if err != nil {
+		logger.Panic("Error unmarshaling config into struct: ", err)
+	}
+
+	(&uconf).completeInitialization(filepath.Dir(config.ConfigFileUsed()))
+
+	logger.Infof("Loaded configuration: %s", config.ConfigFileUsed())
+
+	return &uconf
+}
+
 // Load returns the orderer/application config combination that corresponds to
 // a given profile. Config paths may optionally be provided and will be used
 // in place of the FABRIC_CFG_PATH env variable.
@@ -275,6 +313,50 @@ func Load(profile string, configPaths ...string) *Profile {
 		logger.Panic("Error reading configuration: ", err)
 	}
 	logger.Debugf("Using config file: %s", config.ConfigFileUsed())
+
+	var uconf TopLevel
+	err = viperutil.EnhancedExactUnmarshal(config, &uconf)
+	if err != nil {
+		logger.Panic("Error unmarshaling config into struct: ", err)
+	}
+
+	result, ok := uconf.Profiles[profile]
+	if !ok {
+		logger.Panic("Could not find profile: ", profile)
+	}
+
+	result.completeInitialization(filepath.Dir(config.ConfigFileUsed()))
+
+	logger.Infof("Loaded configuration: %s", config.ConfigFileUsed())
+
+	return result
+}
+
+func LoadFromBytes(profile string, configtx []byte, configPaths ...string) *Profile {
+	config := viper.New()
+	if len(configPaths) > 0 {
+		for _, p := range configPaths {
+			config.AddConfigPath(p)
+		}
+		config.SetConfigName(configName)
+	} else {
+		cf.InitViper(config, configName)
+	}
+
+	// For environment variables
+	config.SetEnvPrefix(Prefix)
+	config.SetConfigType("yaml")
+	config.AutomaticEnv()
+
+	// This replacer allows substitution within the particular profile without
+	// having to fully qualify the name
+	replacer := strings.NewReplacer(strings.ToUpper(fmt.Sprintf("profiles.%s.", profile)), "", ".", "_")
+	config.SetEnvKeyReplacer(replacer)
+
+	err := config.ReadConfig(bytes.NewReader(configtx))
+	if err != nil {
+		logger.Panic("Error reading configuration: ", err)
+	}
 
 	var uconf TopLevel
 	err = viperutil.EnhancedExactUnmarshal(config, &uconf)

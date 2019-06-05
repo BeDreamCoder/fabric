@@ -419,6 +419,14 @@ func DeepMarshalJSON(w io.Writer, msg proto.Message) error {
 	return encoder.Encode(root)
 }
 
+func MarshalToJSON(msg proto.Message) ([]byte, error) {
+	jsonBytes, err := protoToJSON(msg)
+	if err != nil {
+		return nil, err
+	}
+	return jsonBytes, nil
+}
+
 func recursivelyPopulateMessageFromTree(tree map[string]interface{}, msg proto.Message) (err error) {
 	defer func() {
 		// Because this function is recursive, it's difficult to determine which level
