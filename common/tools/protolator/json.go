@@ -420,11 +420,12 @@ func DeepMarshalJSON(w io.Writer, msg proto.Message) error {
 }
 
 func MarshalToJSON(msg proto.Message) ([]byte, error) {
-	jsonBytes, err := protoToJSON(msg)
+	root, err := recursivelyCreateTreeFromMessage(msg)
 	if err != nil {
 		return nil, err
 	}
-	return jsonBytes, nil
+
+	return json.Marshal(root)
 }
 
 func recursivelyPopulateMessageFromTree(tree map[string]interface{}, msg proto.Message) (err error) {

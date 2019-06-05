@@ -261,6 +261,7 @@ func LoadTopLevelFromBytes(configtx []byte, configPaths ...string) *TopLevel {
 
 	// For environment variables
 	config.SetEnvPrefix(Prefix)
+	config.SetConfigType("yaml")
 	config.AutomaticEnv()
 
 	replacer := strings.NewReplacer(".", "_")

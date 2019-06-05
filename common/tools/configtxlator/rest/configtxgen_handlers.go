@@ -144,22 +144,13 @@ func PrintOrg(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "Missing field 'printOrg'\n")
 		return
 	}
-
-	// ubuntu related golang version
-	//configtxStr := r.FormValue("configtx")
-	//if configtxStr == "" {
-	//	w.WriteHeader(http.StatusBadRequest)
-	//	fmt.Fprint(w, "Missing field 'configtx'\n")
-	//	return
-	//}
-	//configtx := []byte(configtxStr)
-	// mac
-	configtx, err := fieldBytes("configtx", r)
-	if err != nil {
+	configtxStr := r.FormValue("configtx")
+	if configtxStr == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprint(w, "Missing field 'configtx'\n")
 		return
 	}
+	configtx := []byte(configtxStr)
 
 	configPath := r.FormValue("configPath")
 	if configPath == "" {
