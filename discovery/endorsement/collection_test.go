@@ -11,13 +11,14 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/discovery"
+	"github.com/hyperledger/fabric-protos-go/msp"
+	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/common/policies"
 	"github.com/hyperledger/fabric/gossip/api"
 	gcommon "github.com/hyperledger/fabric/gossip/common"
 	disc "github.com/hyperledger/fabric/gossip/discovery"
-	"github.com/hyperledger/fabric/protos/common"
-	"github.com/hyperledger/fabric/protos/discovery"
-	"github.com/hyperledger/fabric/protos/msp"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 )
@@ -46,53 +47,47 @@ func TestPrincipalsFromCollectionConfig(t *testing.T) {
 }
 
 func TestNewCollectionFilterInvalidInput(t *testing.T) {
-	t.Run("Invalid collection", func(t *testing.T) {
-		filter, err := principalsFromCollectionConfig([]byte{1, 2, 3})
-		assert.Nil(t, filter)
-		assert.Contains(t, err.Error(), "invalid collection bytes")
-	})
-
 	t.Run("Invalid collection type", func(t *testing.T) {
-		collections := &common.CollectionConfigPackage{}
-		collections.Config = []*common.CollectionConfig{
+		collections := &peer.CollectionConfigPackage{}
+		collections.Config = []*peer.CollectionConfig{
 			{
 				Payload: nil,
 			},
 		}
-		filter, err := principalsFromCollectionConfig(protoutil.MarshalOrPanic(collections))
+		filter, err := principalsFromCollectionConfig(collections)
 		assert.Nil(t, filter)
 		assert.Contains(t, err.Error(), "expected a static collection")
 	})
 
 	t.Run("Invalid membership policy", func(t *testing.T) {
-		collections := &common.CollectionConfigPackage{}
-		collections.Config = []*common.CollectionConfig{
+		collections := &peer.CollectionConfigPackage{}
+		collections.Config = []*peer.CollectionConfig{
 			{
-				Payload: &common.CollectionConfig_StaticCollectionConfig{
-					StaticCollectionConfig: &common.StaticCollectionConfig{
+				Payload: &peer.CollectionConfig_StaticCollectionConfig{
+					StaticCollectionConfig: &peer.StaticCollectionConfig{
 						Name: "foo",
 					},
 				},
 			},
 		}
-		filter, err := principalsFromCollectionConfig(protoutil.MarshalOrPanic(collections))
+		filter, err := principalsFromCollectionConfig(collections)
 		assert.Nil(t, filter)
 		assert.Contains(t, err.Error(), "MemberOrgsPolicy of foo is nil")
 	})
 
 	t.Run("Missing policy", func(t *testing.T) {
-		collections := &common.CollectionConfigPackage{}
-		collections.Config = []*common.CollectionConfig{
+		collections := &peer.CollectionConfigPackage{}
+		collections.Config = []*peer.CollectionConfig{
 			{
-				Payload: &common.CollectionConfig_StaticCollectionConfig{
-					StaticCollectionConfig: &common.StaticCollectionConfig{
+				Payload: &peer.CollectionConfig_StaticCollectionConfig{
+					StaticCollectionConfig: &peer.StaticCollectionConfig{
 						Name:             "foo",
-						MemberOrgsPolicy: &common.CollectionPolicyConfig{},
+						MemberOrgsPolicy: &peer.CollectionPolicyConfig{},
 					},
 				},
 			},
 		}
-		filter, err := principalsFromCollectionConfig(protoutil.MarshalOrPanic(collections))
+		filter, err := principalsFromCollectionConfig(collections)
 		assert.Nil(t, filter)
 		assert.Contains(t, err.Error(), "policy of foo is nil")
 	})
@@ -220,15 +215,15 @@ func TestFilterForPrincipalSets(t *testing.T) {
 	})
 }
 
-func buildCollectionConfig(col2principals map[string][]*msp.MSPPrincipal) []byte {
-	collections := &common.CollectionConfigPackage{}
+func buildCollectionConfig(col2principals map[string][]*msp.MSPPrincipal) *peer.CollectionConfigPackage {
+	collections := &peer.CollectionConfigPackage{}
 	for col, principals := range col2principals {
-		collections.Config = append(collections.Config, &common.CollectionConfig{
-			Payload: &common.CollectionConfig_StaticCollectionConfig{
-				StaticCollectionConfig: &common.StaticCollectionConfig{
+		collections.Config = append(collections.Config, &peer.CollectionConfig{
+			Payload: &peer.CollectionConfig_StaticCollectionConfig{
+				StaticCollectionConfig: &peer.StaticCollectionConfig{
 					Name: col,
-					MemberOrgsPolicy: &common.CollectionPolicyConfig{
-						Payload: &common.CollectionPolicyConfig_SignaturePolicy{
+					MemberOrgsPolicy: &peer.CollectionPolicyConfig{
+						Payload: &peer.CollectionPolicyConfig_SignaturePolicy{
 							SignaturePolicy: &common.SignaturePolicyEnvelope{
 								Identities: principals,
 							},
@@ -238,7 +233,8 @@ func buildCollectionConfig(col2principals map[string][]*msp.MSPPrincipal) []byte
 			},
 		})
 	}
-	return protoutil.MarshalOrPanic(collections)
+
+	return collections
 }
 
 func orgPrincipal(mspID string) *msp.MSPPrincipal {

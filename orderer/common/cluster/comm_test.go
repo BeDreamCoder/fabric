@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/common/crypto/tlsgen"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/metrics"
@@ -27,8 +29,6 @@ import (
 	comm_utils "github.com/hyperledger/fabric/core/comm"
 	"github.com/hyperledger/fabric/orderer/common/cluster"
 	"github.com/hyperledger/fabric/orderer/common/cluster/mocks"
-	"github.com/hyperledger/fabric/protos/common"
-	"github.com/hyperledger/fabric/protos/orderer"
 	"github.com/onsi/gomega"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -211,9 +211,8 @@ func (cn *clusterNode) renewCertificates() {
 	cn.serverConfig.SecOpts.Certificate = serverKeyPair.Cert
 	cn.serverConfig.SecOpts.Key = serverKeyPair.Key
 
-	cn.clientConfig.SecOpts.Key = clientKeyPair.Key
-	cn.clientConfig.SecOpts.Certificate = clientKeyPair.Cert
-	cn.dialer.SetConfig(cn.clientConfig)
+	cn.dialer.Config.SecOpts.Key = clientKeyPair.Key
+	cn.dialer.Config.SecOpts.Certificate = clientKeyPair.Cert
 }
 
 func newTestNodeWithMetrics(t *testing.T, metrics cluster.MetricsProvider, tlsConnGauge metrics.Gauge) *clusterNode {
@@ -226,7 +225,7 @@ func newTestNodeWithMetrics(t *testing.T, metrics cluster.MetricsProvider, tlsCo
 	clientConfig := comm_utils.ClientConfig{
 		AsyncConnect: true,
 		Timeout:      time.Hour,
-		SecOpts: &comm_utils.SecureOptions{
+		SecOpts: comm_utils.SecureOptions{
 			RequireClientCert: true,
 			Key:               clientKeyPair.Key,
 			Certificate:       clientKeyPair.Cert,
@@ -236,10 +235,12 @@ func newTestNodeWithMetrics(t *testing.T, metrics cluster.MetricsProvider, tlsCo
 		},
 	}
 
-	dialer := cluster.NewTLSPinningDialer(clientConfig)
+	dialer := &cluster.PredicateDialer{
+		Config: clientConfig,
+	}
 
 	srvConfig := comm_utils.ServerConfig{
-		SecOpts: &comm_utils.SecureOptions{
+		SecOpts: comm_utils.SecureOptions{
 			Key:         serverKeyPair.Key,
 			Certificate: serverKeyPair.Cert,
 			UseTLS:      true,
@@ -510,13 +511,11 @@ func TestUnavailableHosts(t *testing.T) {
 	// to a host that is down
 	node1 := newTestNode(t)
 
-	clientConfig, err := node1.dialer.ClientConfig()
-	assert.NoError(t, err)
+	clientConfig := node1.dialer.Config
 	// The below timeout makes sure that connection establishment is done
 	// asynchronously. Had it been synchronous, the Remote() call would be
 	// blocked for an hour.
 	clientConfig.Timeout = time.Hour
-	node1.dialer.SetConfig(clientConfig)
 	defer node1.stop()
 
 	node2 := newTestNode(t)
@@ -783,7 +782,7 @@ func TestNoTLSCertificate(t *testing.T) {
 	clientConfig := comm_utils.ClientConfig{
 		AsyncConnect: true,
 		Timeout:      time.Millisecond * 100,
-		SecOpts: &comm_utils.SecureOptions{
+		SecOpts: comm_utils.SecureOptions{
 			ServerRootCAs: [][]byte{ca.CertBytes()},
 			UseTLS:        true,
 		},
@@ -794,7 +793,7 @@ func TestNoTLSCertificate(t *testing.T) {
 	var conn *grpc.ClientConn
 	gt := gomega.NewGomegaWithT(t)
 	gt.Eventually(func() (bool, error) {
-		conn, err = cl.NewConnection(node1.srv.Address(), "")
+		conn, err = cl.NewConnection(node1.srv.Address())
 		return true, err
 	}, time.Minute).Should(gomega.BeTrue())
 
@@ -819,10 +818,8 @@ func TestReconnect(t *testing.T) {
 
 	node1 := newTestNode(t)
 	defer node1.stop()
-	conf, err := node1.dialer.ClientConfig()
-	assert.NoError(t, err)
+	conf := node1.dialer.Config
 	conf.Timeout = time.Hour
-	node1.dialer.SetConfig(conf)
 
 	node2 := newTestNode(t)
 	node2.handler.On("OnSubmit", testChannel, node1.nodeInfo.ID, mock.Anything).Return(nil)

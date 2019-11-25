@@ -14,7 +14,6 @@ import (
 
 	"github.com/hyperledger/fabric/common/chaincode"
 	"github.com/hyperledger/fabric/core/chaincode/persistence"
-	p "github.com/hyperledger/fabric/core/chaincode/persistence/intf"
 	"github.com/hyperledger/fabric/core/chaincode/persistence/mock"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -42,11 +41,18 @@ var _ = Describe("Persistence", func() {
 
 		It("writes a file", func() {
 			path := filepath.Join(testDir, "write")
-			err := filesystemIO.WriteFile(path, []byte("test"), 0600)
+			err := filesystemIO.WriteFile(testDir, "write", []byte("test"))
 			Expect(err).NotTo(HaveOccurred())
 
 			_, err = os.Stat(path)
 			Expect(err).NotTo(HaveOccurred())
+		})
+
+		When("an empty path is supplied to WriteFile", func() {
+			It("returns error", func() {
+				err := filesystemIO.WriteFile("", "write", []byte("test"))
+				Expect(err.Error()).To(Equal("empty path not allowed"))
+			})
 		})
 
 		It("stats a file", func() {
@@ -103,7 +109,99 @@ var _ = Describe("Persistence", func() {
 
 			files, err := filesystemIO.ReadDir(testDir)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(len(files)).To(Equal(1))
+			Expect(files).To(HaveLen(1))
+		})
+
+		It("makes a directory (and any necessary parent directories)", func() {
+			path := filepath.Join(testDir, "make", "dir")
+			err := filesystemIO.MakeDir(path, 0755)
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = os.Stat(path)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	Describe("NewStore", func() {
+		var (
+			err     error
+			tempDir string
+			store   *persistence.Store
+		)
+
+		BeforeEach(func() {
+			tempDir, err = ioutil.TempDir("", "NewStore")
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			os.RemoveAll(tempDir)
+		})
+
+		It("creates a persistence store with the specified path and creates the directory on the filesystem", func() {
+			store = persistence.NewStore(tempDir)
+			Expect(store.Path).To(Equal(tempDir))
+			_, err = os.Stat(tempDir)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	Describe("Initialize", func() {
+		var (
+			mockReadWriter *mock.IOReadWriter
+			store          *persistence.Store
+		)
+
+		BeforeEach(func() {
+			mockReadWriter = &mock.IOReadWriter{}
+			mockReadWriter.ExistsReturns(false, nil)
+			mockReadWriter.MakeDirReturns(nil)
+
+			store = &persistence.Store{
+				ReadWriter: mockReadWriter,
+			}
+		})
+
+		It("creates the directory for the persistence store", func() {
+			store.Initialize()
+			Expect(mockReadWriter.ExistsCallCount()).To(Equal(1))
+			Expect(mockReadWriter.MakeDirCallCount()).To(Equal(1))
+		})
+
+		Context("when the directory already exists", func() {
+			BeforeEach(func() {
+				mockReadWriter.ExistsReturns(true, nil)
+			})
+
+			It("returns without creating the directory", func() {
+				store.Initialize()
+				Expect(mockReadWriter.ExistsCallCount()).To(Equal(1))
+				Expect(mockReadWriter.MakeDirCallCount()).To(Equal(0))
+			})
+		})
+
+		Context("when the existence of the directory cannot be determined", func() {
+			BeforeEach(func() {
+				mockReadWriter.ExistsReturns(false, errors.New("blurg"))
+			})
+
+			It("returns without creating the directory", func() {
+				Expect(store.Initialize).Should(Panic())
+				Expect(mockReadWriter.ExistsCallCount()).To(Equal(1))
+				Expect(mockReadWriter.MakeDirCallCount()).To(Equal(0))
+			})
+		})
+
+		Context("when the directory cannot be created", func() {
+			BeforeEach(func() {
+				mockReadWriter.MakeDirReturns(errors.New("blarg"))
+			})
+
+			It("returns without creating the directory", func() {
+				Expect(store.Initialize).Should(Panic())
+				Expect(mockReadWriter.ExistsCallCount()).To(Equal(1))
+				Expect(mockReadWriter.MakeDirCallCount()).To(Equal(1))
+			})
 		})
 	})
 
@@ -129,10 +227,11 @@ var _ = Describe("Persistence", func() {
 		It("saves a new code package successfully", func() {
 			packageID, err := store.Save("testcc", pkgBytes)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(packageID).To(Equal(p.PackageID("testcc:3fec0187440286d404241e871b44725310b11aaf43d100b053eae712fcabc66d")))
+			Expect(packageID).To(Equal("testcc:3fec0187440286d404241e871b44725310b11aaf43d100b053eae712fcabc66d"))
 			Expect(mockReadWriter.WriteFileCallCount()).To(Equal(1))
-			pkgDataFile, pkgData, _ := mockReadWriter.WriteFileArgsForCall(0)
-			Expect(pkgDataFile).To(Equal("testcc:3fec0187440286d404241e871b44725310b11aaf43d100b053eae712fcabc66d.bin"))
+			pkgDataFilePath, pkgDataFileName, pkgData := mockReadWriter.WriteFileArgsForCall(0)
+			Expect(pkgDataFilePath).To(Equal(""))
+			Expect(pkgDataFileName).To(Equal("testcc:3fec0187440286d404241e871b44725310b11aaf43d100b053eae712fcabc66d.tar.gz"))
 			Expect(pkgData).To(Equal([]byte("testpkg")))
 		})
 
@@ -144,7 +243,7 @@ var _ = Describe("Persistence", func() {
 			It("does nothing and returns the packageID", func() {
 				packageID, err := store.Save("testcc", pkgBytes)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(packageID).To(Equal(p.PackageID("testcc:3fec0187440286d404241e871b44725310b11aaf43d100b053eae712fcabc66d")))
+				Expect(packageID).To(Equal("testcc:3fec0187440286d404241e871b44725310b11aaf43d100b053eae712fcabc66d"))
 				Expect(mockReadWriter.WriteFileCallCount()).To(Equal(0))
 			})
 		})
@@ -156,9 +255,42 @@ var _ = Describe("Persistence", func() {
 
 			It("returns an error", func() {
 				packageID, err := store.Save("testcc", pkgBytes)
-				Expect(packageID).To(Equal(p.PackageID("")))
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("error writing chaincode install package to testcc:3fec0187440286d404241e871b44725310b11aaf43d100b053eae712fcabc66d.bin: soccer"))
+				Expect(packageID).To(Equal(""))
+				Expect(err).To(MatchError(ContainSubstring("error writing chaincode install package to testcc:3fec0187440286d404241e871b44725310b11aaf43d100b053eae712fcabc66d.tar.gz: soccer")))
+			})
+		})
+	})
+
+	Describe("Delete", func() {
+		var (
+			mockReadWriter *mock.IOReadWriter
+			store          *persistence.Store
+		)
+
+		BeforeEach(func() {
+			mockReadWriter = &mock.IOReadWriter{}
+			store = &persistence.Store{
+				ReadWriter: mockReadWriter,
+				Path:       "foo",
+			}
+		})
+
+		It("removes the chaincode from the filesystem", func() {
+			err := store.Delete("hash")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(mockReadWriter.RemoveCallCount()).To(Equal(1))
+			Expect(mockReadWriter.RemoveArgsForCall(0)).To(Equal("foo/hash.tar.gz"))
+		})
+
+		When("remove returns an error", func() {
+			BeforeEach(func() {
+				mockReadWriter.RemoveReturns(fmt.Errorf("fake-remove-error"))
+			})
+
+			It("returns the error", func() {
+				err := store.Delete("hash")
+				Expect(err).To(MatchError("fake-remove-error"))
 			})
 		})
 	})
@@ -179,7 +311,7 @@ var _ = Describe("Persistence", func() {
 		})
 
 		It("loads successfully and returns the chaincode names/versions", func() {
-			ccInstallPkgBytes, err := store.Load(p.PackageID("hash"))
+			ccInstallPkgBytes, err := store.Load("hash")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ccInstallPkgBytes).To(Equal([]byte("cornerkick")))
 		})
@@ -190,11 +322,10 @@ var _ = Describe("Persistence", func() {
 			})
 
 			It("returns an error", func() {
-				ccInstallPkgBytes, err := store.Load(p.PackageID("hash"))
-				Expect(err).To(HaveOccurred())
-				Expect(err).To(Equal(&persistence.CodePackageNotFoundErr{PackageID: p.PackageID("hash")}))
-				Expect(err.Error()).To(Equal("chaincode install package 'hash' not found"))
-				Expect(len(ccInstallPkgBytes)).To(Equal(0))
+				ccInstallPkgBytes, err := store.Load("hash")
+				Expect(err).To(Equal(&persistence.CodePackageNotFoundErr{PackageID: "hash"}))
+				Expect(err).To(MatchError("chaincode install package 'hash' not found"))
+				Expect(ccInstallPkgBytes).To(HaveLen(0))
 			})
 		})
 
@@ -204,10 +335,9 @@ var _ = Describe("Persistence", func() {
 			})
 
 			It("returns an error", func() {
-				ccInstallPkgBytes, err := store.Load(p.PackageID("hash"))
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(Equal("could not determine whether chaincode install package 'hash' exists: goodness me!"))
-				Expect(len(ccInstallPkgBytes)).To(Equal(0))
+				ccInstallPkgBytes, err := store.Load("hash")
+				Expect(err).To(MatchError("could not determine whether chaincode install package 'hash' exists: goodness me!"))
+				Expect(ccInstallPkgBytes).To(HaveLen(0))
 			})
 		})
 
@@ -217,10 +347,9 @@ var _ = Describe("Persistence", func() {
 			})
 
 			It("returns an error", func() {
-				ccInstallPkgBytes, err := store.Load(p.PackageID("hash"))
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("error reading chaincode install package"))
-				Expect(len(ccInstallPkgBytes)).To(Equal(0))
+				ccInstallPkgBytes, err := store.Load("hash")
+				Expect(err).To(MatchError(ContainSubstring("error reading chaincode install package")))
+				Expect(ccInstallPkgBytes).To(HaveLen(0))
 			})
 		})
 	})
@@ -234,9 +363,9 @@ var _ = Describe("Persistence", func() {
 		BeforeEach(func() {
 			mockReadWriter = &mock.IOReadWriter{}
 			mockFileInfo := &mock.OSFileInfo{}
-			mockFileInfo.NameReturns(fmt.Sprintf("%s:%x.bin", "label1", []byte("hash1")))
+			mockFileInfo.NameReturns(fmt.Sprintf("%s:%x.tar.gz", "label1", []byte("hash1")))
 			mockFileInfo2 := &mock.OSFileInfo{}
-			mockFileInfo2.NameReturns(fmt.Sprintf("%s:%x.bin", "label2", []byte("hash2")))
+			mockFileInfo2.NameReturns(fmt.Sprintf("%s:%x.tar.gz", "label2", []byte("hash2")))
 			mockReadWriter.ReadDirReturns([]os.FileInfo{mockFileInfo, mockFileInfo2}, nil)
 			store = &persistence.Store{
 				ReadWriter: mockReadWriter,
@@ -246,45 +375,45 @@ var _ = Describe("Persistence", func() {
 		It("returns the list of installed chaincodes", func() {
 			installedChaincodes, err := store.ListInstalledChaincodes()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(len(installedChaincodes)).To(Equal(2))
+			Expect(installedChaincodes).To(HaveLen(2))
 			Expect(installedChaincodes[0]).To(Equal(chaincode.InstalledChaincode{
 				Hash:      []byte("hash1"),
 				Label:     "label1",
-				PackageID: p.PackageID("label1:6861736831"),
+				PackageID: "label1:6861736831",
 			}))
 			Expect(installedChaincodes[1]).To(Equal(chaincode.InstalledChaincode{
 				Hash:      []byte("hash2"),
 				Label:     "label2",
-				PackageID: p.PackageID("label2:6861736832"),
+				PackageID: "label2:6861736832",
 			}))
 		})
 
 		Context("when extraneous files are present", func() {
 			BeforeEach(func() {
 				mockFileInfo := &mock.OSFileInfo{}
-				mockFileInfo.NameReturns(fmt.Sprintf("%s:%x.bin", "label1", []byte("hash1")))
+				mockFileInfo.NameReturns(fmt.Sprintf("%s:%x.tar.gz", "label1", []byte("hash1")))
 				mockFileInfo2 := &mock.OSFileInfo{}
-				mockFileInfo2.NameReturns(fmt.Sprintf("%s:%x.bin", "label2", []byte("hash2")))
+				mockFileInfo2.NameReturns(fmt.Sprintf("%s:%x.tar.gz", "label2", []byte("hash2")))
 				mockFileInfo3 := &mock.OSFileInfo{}
-				mockFileInfo3.NameReturns(fmt.Sprintf("%s:%x.bin", "", "Musha rain dum a doo, dum a da"))
+				mockFileInfo3.NameReturns(fmt.Sprintf("%s:%x.tar.gz", "", "Musha rain dum a doo, dum a da"))
 				mockFileInfo4 := &mock.OSFileInfo{}
-				mockFileInfo4.NameReturns(fmt.Sprintf("%s:%x.bin", "", "barfity:barf.bin"))
+				mockFileInfo4.NameReturns(fmt.Sprintf("%s:%x.tar.gz", "", "barfity:barf.tar.gz"))
 				mockReadWriter.ReadDirReturns([]os.FileInfo{mockFileInfo, mockFileInfo2, mockFileInfo3}, nil)
 			})
 
 			It("returns the list of installed chaincodes", func() {
 				installedChaincodes, err := store.ListInstalledChaincodes()
 				Expect(err).NotTo(HaveOccurred())
-				Expect(len(installedChaincodes)).To(Equal(2))
+				Expect(installedChaincodes).To(HaveLen(2))
 				Expect(installedChaincodes[0]).To(Equal(chaincode.InstalledChaincode{
 					Hash:      []byte("hash1"),
 					Label:     "label1",
-					PackageID: p.PackageID("label1:6861736831"),
+					PackageID: "label1:6861736831",
 				}))
 				Expect(installedChaincodes[1]).To(Equal(chaincode.InstalledChaincode{
 					Hash:      []byte("hash2"),
 					Label:     "label2",
-					PackageID: p.PackageID("label2:6861736832"),
+					PackageID: "label2:6861736832",
 				}))
 			})
 		})
@@ -297,7 +426,7 @@ var _ = Describe("Persistence", func() {
 			It("returns an error", func() {
 				installedChaincodes, err := store.ListInstalledChaincodes()
 				Expect(err).To(HaveOccurred())
-				Expect(len(installedChaincodes)).To(Equal(0))
+				Expect(installedChaincodes).To(HaveLen(0))
 			})
 		})
 	})

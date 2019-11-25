@@ -9,25 +9,22 @@ package policy
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/common/cauthdsl"
 	"github.com/hyperledger/fabric/core/policy/mocks"
 	"github.com/hyperledger/fabric/msp"
-	"github.com/hyperledger/fabric/protos/common"
-	"github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-//go:generate mockery -dir ../../msp/ -name IdentityDeserializer -case underscore -output mocks/
-//go:generate mockery -dir ../../msp/ -name Identity -case underscore -output mocks/
-
 func TestComponentIntegrationSignaturePolicyEnv(t *testing.T) {
 	idds := &mocks.IdentityDeserializer{}
 	id := &mocks.Identity{}
 
-	spp := &cauthdsl.ProviderFromStruct{
+	spp := &cauthdsl.EnvelopeBasedPolicyProvider{
 		Deserializer: idds,
 	}
 	ev := &ApplicationPolicyEvaluator{
@@ -57,8 +54,8 @@ func TestEvaluator(t *testing.T) {
 	okEval := &mocks.Policy{}
 	nokEval := &mocks.Policy{}
 
-	okEval.On("Evaluate", mock.Anything).Return(nil)
-	nokEval.On("Evaluate", mock.Anything).Return(errors.New("bad bad"))
+	okEval.On("EvaluateSignedData", mock.Anything).Return(nil)
+	nokEval.On("EvaluateSignedData", mock.Anything).Return(errors.New("bad bad"))
 
 	spp := &mocks.SignaturePolicyProvider{}
 	cpp := &mocks.ChannelPolicyReferenceProvider{}
@@ -128,7 +125,7 @@ func TestChannelPolicyReference(t *testing.T) {
 	assert.Nil(t, ape)
 	assert.Contains(t, err.Error(), "failed to retrieve policy manager for channel")
 
-	mm := &mocks.Manager{}
+	mm := &mocks.PolicyManager{}
 	mcpmg.On("Manager", "channel").Return(mm, true).Once()
 	ape, err = New(nil, "channel", mcpmg)
 	assert.NoError(t, err)
@@ -137,7 +134,7 @@ func TestChannelPolicyReference(t *testing.T) {
 	mcpmg.On("Manager", "channel").Return(mm, true)
 
 	mp := &mocks.Policy{}
-	mp.On("Evaluate", mock.Anything).Return(nil)
+	mp.On("EvaluateSignedData", mock.Anything).Return(nil)
 	mm.On("GetPolicy", "As the sun breaks above the ground").Return(mp, true)
 	err = ape.evaluateChannelConfigPolicyReference("As the sun breaks above the ground", nil)
 	assert.NoError(t, err)

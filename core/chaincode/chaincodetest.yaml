@@ -138,8 +138,6 @@ peer:
 
     # Peer port to accept connections on
     port:    21212
-    # Setting for runtime.GOMAXPROCS(n). If n < 1, it does not change the current setting
-    gomaxprocs: -1
     workers: 2
 
     # Sync related configuration
@@ -304,6 +302,7 @@ chaincode:
     golang:
         # golang will never need more than baseos
         runtime: $(DOCKER_NS)/fabric-baseos:$(PROJECT_VERSION)
+        dynamicLink: true
 
     car:
         # car may need more facilities (JVM, etc) in the future as the catalog

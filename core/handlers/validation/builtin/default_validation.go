@@ -10,18 +10,18 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/hyperledger/fabric-protos-go/common"
 	commonerrors "github.com/hyperledger/fabric/common/errors"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/core/committer/txvalidator/v20/plugindispatcher"
-	"github.com/hyperledger/fabric/core/handlers/validation/api"
+	validation "github.com/hyperledger/fabric/core/handlers/validation/api"
 	. "github.com/hyperledger/fabric/core/handlers/validation/api/capabilities"
 	. "github.com/hyperledger/fabric/core/handlers/validation/api/identities"
 	. "github.com/hyperledger/fabric/core/handlers/validation/api/policies"
 	. "github.com/hyperledger/fabric/core/handlers/validation/api/state"
-	"github.com/hyperledger/fabric/core/handlers/validation/builtin/v12"
-	"github.com/hyperledger/fabric/core/handlers/validation/builtin/v13"
-	"github.com/hyperledger/fabric/core/handlers/validation/builtin/v20"
-	"github.com/hyperledger/fabric/protos/common"
+	v12 "github.com/hyperledger/fabric/core/handlers/validation/builtin/v12"
+	v13 "github.com/hyperledger/fabric/core/handlers/validation/builtin/v13"
+	v20 "github.com/hyperledger/fabric/core/handlers/validation/builtin/v20"
 	"github.com/pkg/errors"
 )
 

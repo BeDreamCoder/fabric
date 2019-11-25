@@ -10,29 +10,48 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io/ioutil"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/msp"
+	"github.com/hyperledger/fabric/bccsp/sw"
+	"github.com/hyperledger/fabric/common/capabilities"
+	"github.com/hyperledger/fabric/common/channelconfig"
+	"github.com/hyperledger/fabric/common/configtx"
+	"github.com/hyperledger/fabric/common/configtx/test"
 	"github.com/hyperledger/fabric/common/crypto/tlsgen"
 	"github.com/hyperledger/fabric/common/flogging"
-	mockpolicies "github.com/hyperledger/fabric/common/mocks/policies"
 	"github.com/hyperledger/fabric/common/policies"
 	"github.com/hyperledger/fabric/core/comm"
-	"github.com/hyperledger/fabric/internal/configtxgen/configtxgentest"
+	"github.com/hyperledger/fabric/core/config/configtest"
 	"github.com/hyperledger/fabric/internal/configtxgen/encoder"
-	"github.com/hyperledger/fabric/internal/configtxgen/localconfig"
+	"github.com/hyperledger/fabric/internal/configtxgen/genesisconfig"
 	"github.com/hyperledger/fabric/orderer/common/cluster"
 	"github.com/hyperledger/fabric/orderer/common/cluster/mocks"
-	"github.com/hyperledger/fabric/protos/common"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
+
+//go:generate counterfeiter -o mocks/policy.go --fake-name Policy . policy
+
+type policy interface {
+	policies.Policy
+}
+
+//go:generate counterfeiter -o mocks/policy_manager.go --fake-name PolicyManager . policyManager
+
+type policyManager interface {
+	policies.Manager
+}
 
 func TestParallelStubActivation(t *testing.T) {
 	t.Parallel()
@@ -71,11 +90,11 @@ func TestDialerCustomKeepAliveOptions(t *testing.T) {
 
 	clientKeyPair, err := ca.NewClientCertKeyPair()
 	clientConfig := comm.ClientConfig{
-		KaOpts: &comm.KeepaliveOptions{
+		KaOpts: comm.KeepaliveOptions{
 			ClientTimeout: time.Second * 12345,
 		},
 		Timeout: time.Millisecond * 100,
-		SecOpts: &comm.SecureOptions{
+		SecOpts: comm.SecureOptions{
 			RequireClientCert: true,
 			Key:               clientKeyPair.Key,
 			Certificate:       clientKeyPair.Cert,
@@ -85,15 +104,58 @@ func TestDialerCustomKeepAliveOptions(t *testing.T) {
 		},
 	}
 
-	dialer := cluster.NewTLSPinningDialer(clientConfig)
-	timeout := dialer.Config.Load().(comm.ClientConfig).KaOpts.ClientTimeout
+	dialer := &cluster.PredicateDialer{Config: clientConfig}
+	timeout := dialer.Config.KaOpts.ClientTimeout
 	assert.Equal(t, time.Second*12345, timeout)
+}
+
+func TestPredicateDialerUpdateRootCAs(t *testing.T) {
+	t.Parallel()
+
+	node1 := newTestNode(t)
+	defer node1.stop()
+
+	anotherTLSCA, err := tlsgen.NewCA()
+	assert.NoError(t, err)
+
+	dialer := &cluster.PredicateDialer{
+		Config: node1.clientConfig.Clone(),
+	}
+	dialer.Config.SecOpts.ServerRootCAs = [][]byte{anotherTLSCA.CertBytes()}
+	dialer.Config.Timeout = time.Second
+	dialer.Config.AsyncConnect = false
+
+	_, err = dialer.Dial(node1.srv.Address(), nil)
+	assert.Error(t, err)
+
+	// Update root TLS CAs asynchronously to make sure we don't have a data race.
+	go func() {
+		dialer.UpdateRootCAs(node1.clientConfig.SecOpts.ServerRootCAs)
+	}()
+
+	// Eventually we should succeed connecting.
+	for i := 0; i < 10; i++ {
+		conn, err := dialer.Dial(node1.srv.Address(), nil)
+		if err == nil {
+			conn.Close()
+			return
+		}
+	}
+
+	assert.Fail(t, "could not connect after 10 attempts despite changing TLS CAs")
 }
 
 func TestDialerBadConfig(t *testing.T) {
 	t.Parallel()
 	emptyCertificate := []byte("-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----")
-	dialer := cluster.NewTLSPinningDialer(comm.ClientConfig{SecOpts: &comm.SecureOptions{UseTLS: true, ServerRootCAs: [][]byte{emptyCertificate}}})
+	dialer := &cluster.PredicateDialer{
+		Config: comm.ClientConfig{
+			SecOpts: comm.SecureOptions{
+				UseTLS:        true,
+				ServerRootCAs: [][]byte{emptyCertificate},
+			},
+		},
+	}
 	_, err := dialer.Dial("127.0.0.1:8080", func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 		return nil
 	})
@@ -109,13 +171,19 @@ func TestDERtoPEM(t *testing.T) {
 	assert.Equal(t, cluster.DERtoPEM(keyPair.TLSCert.Raw), string(keyPair.Cert))
 }
 
-func TestStandardDialerDialer(t *testing.T) {
+func TestStandardDialer(t *testing.T) {
 	t.Parallel()
 	emptyCertificate := []byte("-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----")
-	dialer := cluster.NewTLSPinningDialer(comm.ClientConfig{SecOpts: &comm.SecureOptions{UseTLS: true, ServerRootCAs: [][]byte{emptyCertificate}}})
-	standardDialer := &cluster.StandardDialer{Dialer: dialer}
-	_, err := standardDialer.Dial("127.0.0.1:8080")
-	assert.EqualError(t, err, "error adding root certificate: asn1: syntax error: sequence truncated")
+	certPool := [][]byte{emptyCertificate}
+	config := comm.ClientConfig{SecOpts: comm.SecureOptions{UseTLS: true, ServerRootCAs: certPool}}
+	standardDialer := &cluster.StandardDialer{
+		Config: config,
+	}
+	_, err := standardDialer.Dial(cluster.EndpointCriteria{Endpoint: "127.0.0.1:8080", TLSRootCAs: certPool})
+	assert.EqualError(t,
+		err,
+		"failed creating gRPC client: error adding root certificate: asn1: syntax error: sequence truncated",
+	)
 }
 
 func TestVerifyBlockSignature(t *testing.T) {
@@ -458,34 +526,86 @@ func createBlockChain(start, end uint64) []*common.Block {
 }
 
 func TestEndpointconfigFromConfigBlockGreenPath(t *testing.T) {
-	blockBytes, err := ioutil.ReadFile("testdata/mychannel.block")
-	assert.NoError(t, err)
+	t.Run("global endpoints", func(t *testing.T) {
+		block, err := test.MakeGenesisBlock("mychannel")
+		assert.NoError(t, err)
 
-	block := &common.Block{}
-	assert.NoError(t, proto.Unmarshal(blockBytes, block))
+		cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
+		assert.NoError(t, err)
+		// For a block that doesn't have per org endpoints,
+		// we take the global endpoints
+		injectGlobalOrdererEndpoint(t, block, "globalEndpoint")
+		endpointConfig, err := cluster.EndpointconfigFromConfigBlock(block, cryptoProvider)
+		assert.NoError(t, err)
+		assert.Len(t, endpointConfig, 1)
+		assert.Equal(t, "globalEndpoint", endpointConfig[0].Endpoint)
 
-	endpointConfig, err := cluster.EndpointconfigFromConfigBlock(block)
-	assert.NoError(t, err)
-	assert.Len(t, endpointConfig.TLSRootCAs, 1)
-	assert.Equal(t, []string{"orderer.example.com:7050"}, endpointConfig.Endpoints)
+		bl, _ := pem.Decode(endpointConfig[0].TLSRootCAs[0])
+		cert, err := x509.ParseCertificate(bl.Bytes)
+		assert.NoError(t, err)
 
-	bl, _ := pem.Decode(endpointConfig.TLSRootCAs[0])
-	cert, err := x509.ParseCertificate(bl.Bytes)
-	assert.NoError(t, err)
+		assert.True(t, cert.IsCA)
+	})
 
-	assert.True(t, cert.IsCA)
-	assert.Equal(t, "tlsca.example.com", cert.Subject.CommonName)
+	t.Run("per org endpoints", func(t *testing.T) {
+		block, err := test.MakeGenesisBlock("mychannel")
+		assert.NoError(t, err)
+
+		// Make a second config.
+		gConf := genesisconfig.Load(genesisconfig.SampleSingleMSPSoloProfile, configtest.GetDevConfigDir())
+		gConf.Orderer.Capabilities = map[string]bool{
+			capabilities.OrdererV2_0: true,
+		}
+		channelGroup, err := encoder.NewChannelGroup(gConf)
+		assert.NoError(t, err)
+
+		cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
+		assert.NoError(t, err)
+		bundle, err := channelconfig.NewBundle("mychannel", &common.Config{ChannelGroup: channelGroup}, cryptoProvider)
+		assert.NoError(t, err)
+
+		msps, err := bundle.MSPManager().GetMSPs()
+		assert.NoError(t, err)
+		caBytes := msps["SampleOrg"].GetTLSRootCerts()[0]
+
+		assert.NoError(t, err)
+		injectAdditionalTLSCAEndpointPair(t, block, "anotherEndpoint", caBytes, "fooOrg")
+		endpointConfig, err := cluster.EndpointconfigFromConfigBlock(block, cryptoProvider)
+		assert.NoError(t, err)
+		// And ensure that the endpoints that are taken, are the per org ones.
+		assert.Len(t, endpointConfig, 2)
+		for _, endpoint := range endpointConfig {
+			// If this is the original organization (and not the clone),
+			// the TLS CA is 'caBytes' read from the second block.
+			if endpoint.Endpoint == "anotherEndpoint" {
+				assert.Len(t, endpoint.TLSRootCAs, 1)
+				assert.Equal(t, caBytes, endpoint.TLSRootCAs[0])
+				continue
+			}
+			// Else, our endpoints are from the original org, and the TLS CA is something else.
+			assert.NotEqual(t, caBytes, endpoint.TLSRootCAs[0])
+			// The endpoints we expect to see are something else.
+			assert.Equal(t, 0, strings.Index(endpoint.Endpoint, "127.0.0.1:"))
+			bl, _ := pem.Decode(endpoint.TLSRootCAs[0])
+			cert, err := x509.ParseCertificate(bl.Bytes)
+			assert.NoError(t, err)
+			assert.True(t, cert.IsCA)
+		}
+	})
 }
 
 func TestEndpointconfigFromConfigBlockFailures(t *testing.T) {
+	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
+	assert.NoError(t, err)
+
 	t.Run("nil block", func(t *testing.T) {
-		certs, err := cluster.EndpointconfigFromConfigBlock(nil)
+		certs, err := cluster.EndpointconfigFromConfigBlock(nil, cryptoProvider)
 		assert.Nil(t, certs)
 		assert.EqualError(t, err, "nil block")
 	})
 
 	t.Run("nil block data", func(t *testing.T) {
-		certs, err := cluster.EndpointconfigFromConfigBlock(&common.Block{})
+		certs, err := cluster.EndpointconfigFromConfigBlock(&common.Block{}, cryptoProvider)
 		assert.Nil(t, certs)
 		assert.EqualError(t, err, "block data is nil")
 	})
@@ -493,7 +613,7 @@ func TestEndpointconfigFromConfigBlockFailures(t *testing.T) {
 	t.Run("no envelope", func(t *testing.T) {
 		certs, err := cluster.EndpointconfigFromConfigBlock(&common.Block{
 			Data: &common.BlockData{},
-		})
+		}, cryptoProvider)
 		assert.Nil(t, certs)
 		assert.EqualError(t, err, "envelope index out of bounds")
 	})
@@ -503,45 +623,9 @@ func TestEndpointconfigFromConfigBlockFailures(t *testing.T) {
 			Data: &common.BlockData{
 				Data: [][]byte{{}},
 			},
-		})
+		}, cryptoProvider)
 		assert.Nil(t, certs)
 		assert.EqualError(t, err, "failed extracting bundle from envelope: envelope header cannot be nil")
-	})
-}
-
-func TestClientConfig(t *testing.T) {
-	t.Run("Uninitialized dialer", func(t *testing.T) {
-		dialer := &cluster.PredicateDialer{}
-		_, err := dialer.ClientConfig()
-		assert.EqualError(t, err, "client config not initialized")
-	})
-
-	t.Run("Wrong type stored", func(t *testing.T) {
-		dialer := &cluster.PredicateDialer{}
-		dialer.Config.Store("foo")
-		_, err := dialer.ClientConfig()
-		assert.EqualError(t, err, "value stored is string, not comm.ClientConfig")
-	})
-
-	t.Run("Nil secure options", func(t *testing.T) {
-		dialer := &cluster.PredicateDialer{}
-		dialer.Config.Store(comm.ClientConfig{
-			SecOpts: nil,
-		})
-		_, err := dialer.ClientConfig()
-		assert.EqualError(t, err, "SecOpts is nil")
-	})
-
-	t.Run("Valid config", func(t *testing.T) {
-		dialer := &cluster.PredicateDialer{}
-		dialer.Config.Store(comm.ClientConfig{
-			SecOpts: &comm.SecureOptions{
-				Key: []byte{1, 2, 3},
-			},
-		})
-		cc, err := dialer.ClientConfig()
-		assert.NoError(t, err)
-		assert.Equal(t, []byte{1, 2, 3}, cc.SecOpts.Key)
 	})
 }
 
@@ -633,10 +717,12 @@ func TestConfigFromBlockBadInput(t *testing.T) {
 
 func TestBlockValidationPolicyVerifier(t *testing.T) {
 	t.Parallel()
-	config := configtxgentest.Load(localconfig.SampleInsecureSoloProfile)
+	config := genesisconfig.Load(genesisconfig.SampleInsecureSoloProfile, configtest.GetDevConfigDir())
 	group, err := encoder.NewChannelGroup(config)
 	assert.NoError(t, err)
 	assert.NotNil(t, group)
+	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
+	assert.NoError(t, err)
 
 	validConfigEnvelope := &common.ConfigEnvelope{
 		Config: &common.Config{
@@ -649,47 +735,52 @@ func TestBlockValidationPolicyVerifier(t *testing.T) {
 		expectedError string
 		envelope      *common.ConfigEnvelope
 		policyMap     map[string]policies.Policy
+		policy        policies.Policy
 	}{
+		/**
 		{
 			description:   "policy not found",
 			expectedError: "policy /Channel/Orderer/BlockValidation wasn't found",
 		},
+		*/
 		{
 			description:   "policy evaluation fails",
 			expectedError: "invalid signature",
-			policyMap: map[string]policies.Policy{
-				"/Channel/Orderer/BlockValidation": &mockpolicies.Policy{
-					Err: errors.New("invalid signature"),
+			policy: &mocks.Policy{
+				EvaluateSignedDataStub: func([]*protoutil.SignedData) error {
+					return errors.New("invalid signature")
 				},
 			},
 		},
 		{
 			description:   "bad config envelope",
 			expectedError: "config must contain a channel group",
-			policyMap: map[string]policies.Policy{
-				"/Channel/Orderer/BlockValidation": &mockpolicies.Policy{
-					Err: errors.New("invalid signature"),
-				},
-			},
-			envelope: &common.ConfigEnvelope{Config: &common.Config{}},
+			policy:        &mocks.Policy{},
+			envelope:      &common.ConfigEnvelope{Config: &common.Config{}},
 		},
 		{
 			description: "good config envelope overrides custom policy manager",
-			policyMap: map[string]policies.Policy{
-				"/Channel/Orderer/BlockValidation": &mockpolicies.Policy{
-					Err: errors.New("invalid signature"),
+			policy: &mocks.Policy{
+				EvaluateSignedDataStub: func([]*protoutil.SignedData) error {
+					return errors.New("invalid signature")
 				},
 			},
 			envelope: validConfigEnvelope,
 		},
 	} {
 		t.Run(testCase.description, func(t *testing.T) {
+			mockPolicyManager := &mocks.PolicyManager{}
+			if testCase.policy != nil {
+				mockPolicyManager.GetPolicyReturns(testCase.policy, true)
+			} else {
+				mockPolicyManager.GetPolicyReturns(nil, false)
+			}
+			mockPolicyManager.GetPolicyReturns(testCase.policy, true)
 			verifier := &cluster.BlockValidationPolicyVerifier{
-				Logger:  flogging.MustGetLogger("test"),
-				Channel: "mychannel",
-				PolicyMgr: &mockpolicies.Manager{
-					PolicyMap: testCase.policyMap,
-				},
+				Logger:    flogging.MustGetLogger("test"),
+				Channel:   "mychannel",
+				PolicyMgr: mockPolicyManager,
+				BCCSP:     cryptoProvider,
 			}
 
 			err := verifier.VerifyBlockSignature(nil, testCase.envelope)
@@ -704,13 +795,15 @@ func TestBlockValidationPolicyVerifier(t *testing.T) {
 
 func TestBlockVerifierAssembler(t *testing.T) {
 	t.Parallel()
-	config := configtxgentest.Load(localconfig.SampleInsecureSoloProfile)
+	config := genesisconfig.Load(genesisconfig.SampleInsecureSoloProfile, configtest.GetDevConfigDir())
 	group, err := encoder.NewChannelGroup(config)
 	assert.NoError(t, err)
 	assert.NotNil(t, group)
+	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
+	assert.NoError(t, err)
 
 	t.Run("Good config envelope", func(t *testing.T) {
-		bva := &cluster.BlockVerifierAssembler{}
+		bva := &cluster.BlockVerifierAssembler{BCCSP: cryptoProvider}
 		verifier, err := bva.VerifierFromConfig(&common.ConfigEnvelope{
 			Config: &common.Config{
 				ChannelGroup: group,
@@ -722,7 +815,7 @@ func TestBlockVerifierAssembler(t *testing.T) {
 	})
 
 	t.Run("Bad config envelope", func(t *testing.T) {
-		bva := &cluster.BlockVerifierAssembler{}
+		bva := &cluster.BlockVerifierAssembler{BCCSP: cryptoProvider}
 		_, err := bva.VerifierFromConfig(&common.ConfigEnvelope{}, "mychannel")
 		assert.EqualError(t, err, "failed extracting bundle from envelope: channelconfig Config cannot be nil")
 	})
@@ -991,4 +1084,91 @@ func TestLedgerInterceptor(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, intercepted)
 	ledger.AssertCalled(t, "Append", block)
+}
+
+func injectAdditionalTLSCAEndpointPair(t *testing.T, block *common.Block, endpoint string, tlsCA []byte, orgName string) {
+	// Unwrap the layers until we reach the orderer addresses
+	env, err := protoutil.ExtractEnvelope(block, 0)
+	assert.NoError(t, err)
+	payload, err := protoutil.UnmarshalPayload(env.Payload)
+	assert.NoError(t, err)
+	confEnv, err := configtx.UnmarshalConfigEnvelope(payload.Data)
+	assert.NoError(t, err)
+	ordererGrp := confEnv.Config.ChannelGroup.Groups[channelconfig.OrdererGroupKey].Groups
+	// Get the first orderer org config
+	var firstOrdererConfig *common.ConfigGroup
+	for _, grp := range ordererGrp {
+		firstOrdererConfig = grp
+		break
+	}
+	// Duplicate it.
+	secondOrdererConfig := proto.Clone(firstOrdererConfig).(*common.ConfigGroup)
+	ordererGrp[orgName] = secondOrdererConfig
+	// Reach the FabricMSPConfig buried in it.
+	mspConfig := &msp.MSPConfig{}
+	err = proto.Unmarshal(secondOrdererConfig.Values[channelconfig.MSPKey].Value, mspConfig)
+	assert.NoError(t, err)
+
+	fabricConfig := &msp.FabricMSPConfig{}
+	err = proto.Unmarshal(mspConfig.Config, fabricConfig)
+	assert.NoError(t, err)
+
+	// Plant the given TLS CA in it.
+	fabricConfig.TlsRootCerts = [][]byte{tlsCA}
+	// No intermediate root CAs, to make the test simpler.
+	fabricConfig.TlsIntermediateCerts = nil
+	// Rename it.
+	fabricConfig.Name = orgName
+
+	// Pack the MSP config back into the config
+	secondOrdererConfig.Values[channelconfig.MSPKey].Value = protoutil.MarshalOrPanic(&msp.MSPConfig{
+		Config: protoutil.MarshalOrPanic(fabricConfig),
+		Type:   mspConfig.Type,
+	})
+
+	// Inject the endpoint
+	ordererOrgProtos := &common.OrdererAddresses{
+		Addresses: []string{endpoint},
+	}
+	secondOrdererConfig.Values[channelconfig.EndpointsKey].Value = protoutil.MarshalOrPanic(ordererOrgProtos)
+
+	// Fold everything back into the block
+	payload.Data = protoutil.MarshalOrPanic(confEnv)
+	env.Payload = protoutil.MarshalOrPanic(payload)
+	block.Data.Data[0] = protoutil.MarshalOrPanic(env)
+}
+
+func TestEndpointCriteriaString(t *testing.T) {
+	// The top cert is the issuer of the bottom cert
+	certs := `-----BEGIN CERTIFICATE-----
+MIIBozCCAUigAwIBAgIQMXmzUnikiAZDr4VsrBL+rzAKBggqhkjOPQQDAjAxMS8w
+LQYDVQQFEyY2NTc2NDA3Njc5ODcwOTA3OTEwNDM5NzkxMTAwNzA0Mzk3Njg3OTAe
+Fw0xOTExMTEyMDM5MDRaFw0yOTExMDkyMDM5MDRaMDExLzAtBgNVBAUTJjY1NzY0
+MDc2Nzk4NzA5MDc5MTA0Mzk3OTExMDA3MDQzOTc2ODc5MFkwEwYHKoZIzj0CAQYI
+KoZIzj0DAQcDQgAEzBBkRvWgasCKf1pejwpOu+1Fv9FffOZMHnna/7lfMrAqOs8d
+HMDVU7mSexu7YNTpAwm4vkdHXi35H8zlVABTxaNCMEAwDgYDVR0PAQH/BAQDAgGm
+MB0GA1UdJQQWMBQGCCsGAQUFBwMCBggrBgEFBQcDATAPBgNVHRMBAf8EBTADAQH/
+MAoGCCqGSM49BAMCA0kAMEYCIQCXqXoYLAJN9diIdGxPlRQJgJLju4brWXZfyt3s
+E9TjFwIhAOuUJjcOchdP6UA9WLnVWciEo1Omf59NgfHL1gUPb/t6
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIBpDCCAUqgAwIBAgIRAIyvtL0z1xQ+NecXeH1HmmAwCgYIKoZIzj0EAwIwMTEv
+MC0GA1UEBRMmNjU3NjQwNzY3OTg3MDkwNzkxMDQzOTc5MTEwMDcwNDM5NzY4Nzkw
+HhcNMTkxMTExMjAzOTA0WhcNMTkxMTEyMjAzOTA0WjAyMTAwLgYDVQQFEycxODcw
+MDQyMzcxODQwMjY5Mzk2ODUxNzk1NzM3MzIyMTc2OTA3MjAwWTATBgcqhkjOPQIB
+BggqhkjOPQMBBwNCAARZBFDBOfC7T9RbsX+PgyE6sM7ocuwn6krIGjc00ICivFgQ
+qdHMU7hiswiYwSvwh9MDHlprCRW3ycSgEYQgKU5to0IwQDAOBgNVHQ8BAf8EBAMC
+BaAwHQYDVR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMBMA8GA1UdEQQIMAaHBH8A
+AAEwCgYIKoZIzj0EAwIDSAAwRQIhAK6G7qr/ClszCFP25gsflA31+7eoss5vi3o4
+qz8bY+s6AiBvO0aOfE8M4ibjmRE4vSXo0+gkOIJKqZcmiRdnJSr8Xw==
+-----END CERTIFICATE-----`
+
+	epc := cluster.EndpointCriteria{
+		Endpoint:   "orderer.example.com:7050",
+		TLSRootCAs: [][]byte{[]byte(certs)},
+	}
+
+	actual := fmt.Sprint(epc)
+	expected := `{"CAs":[{"Expired":false,"Issuer":"self","Subject":"SERIALNUMBER=65764076798709079104397911007043976879"},{"Expired":true,"Issuer":"SERIALNUMBER=65764076798709079104397911007043976879","Subject":"SERIALNUMBER=187004237184026939685179573732217690720"}],"Endpoint":"orderer.example.com:7050"}`
+	assert.Equal(t, expected, actual)
 }

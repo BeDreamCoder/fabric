@@ -9,7 +9,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -53,7 +55,7 @@ func TestConfiguration(t *testing.T) {
 	}
 
 	// There is a flake where sometimes this returns no IP address.
-	localIP, err := GetLocalIP()
+	localIP, err := comm.GetLocalIP()
 	assert.NoError(t, err)
 
 	var tests = []struct {
@@ -105,10 +107,8 @@ func TestConfiguration(t *testing.T) {
 				viper.Set(k, v)
 			}
 			// load Config file
-			coreConfig, err := GlobalConfig()
-			assert.NoError(t, err, "GetPeerEndpoint returned unexpected error")
-			assert.Equal(t, test.settings["peer.id"], coreConfig.PeerEndpoint.Id.Name, "GetPeerEndpoint returned the wrong peer ID")
-			assert.Equal(t, test.expectedPeerAddress, coreConfig.PeerEndpoint.Address, "GetPeerEndpoint returned the wrong peer address")
+			_, err := GlobalConfig()
+			assert.NoError(t, err, "GlobalConfig returned unexpected error")
 		})
 	}
 }
@@ -116,8 +116,10 @@ func TestConfiguration(t *testing.T) {
 func TestGetServerConfig(t *testing.T) {
 	// good config without TLS
 	viper.Set("peer.tls.enabled", false)
+	viper.Set("peer.connectiontimeout", "7s")
 	sc, _ := GetServerConfig()
 	assert.Equal(t, false, sc.SecOpts.UseTLS, "ServerConfig.SecOpts.UseTLS should be false")
+	assert.Equal(t, sc.ConnectionTimeout, 7*time.Second, "ServerConfig.ConnectionTimeout should be 7 seconds")
 
 	// keepalive options
 	assert.Equal(t, comm.DefaultKeepaliveOptions, sc.KaOpts, "ServerConfig.KaOpts should be set to default values")
@@ -229,6 +231,11 @@ func TestGetClientCertificate(t *testing.T) {
 }
 
 func TestGlobalConfig(t *testing.T) {
+	defer viper.Reset()
+	cwd, err := os.Getwd()
+	assert.NoError(t, err, "failed to get current working directory")
+	viper.SetConfigFile(filepath.Join(cwd, "core.yaml"))
+
 	//Capture the configuration from viper
 	viper.Set("peer.addressAutoDetect", false)
 	viper.Set("peer.address", "localhost:8080")
@@ -248,43 +255,143 @@ func TestGlobalConfig(t *testing.T) {
 	viper.Set("peer.discovery.authCachePurgeRetentionRatio", 0.75)
 	viper.Set("peer.chaincodeListenAddress", "0.0.0.0:7052")
 	viper.Set("peer.chaincodeAddress", "0.0.0.0:7052")
-	viper.Set("peer.adminService.listenAddress", "0.0.0.0:7055")
+	viper.Set("peer.validatorPoolSize", 1)
 
 	viper.Set("vm.endpoint", "unix:///var/run/docker.sock")
 	viper.Set("vm.docker.tls.enabled", false)
 	viper.Set("vm.docker.attachStdout", false)
+	viper.Set("vm.docker.hostConfig.NetworkMode", "TestingHost")
+	viper.Set("vm.docker.tls.cert.file", "test/vm/tls/cert/file")
+	viper.Set("vm.docker.tls.key.file", "test/vm/tls/key/file")
+	viper.Set("vm.docker.tls.ca.file", "test/vm/tls/ca/file")
+
+	viper.Set("operations.listenAddress", "127.0.0.1:9443")
+	viper.Set("operations.tls.enabled", false)
+	viper.Set("operations.tls.cert.file", "test/tls/cert/file")
+	viper.Set("operations.tls.key.file", "test/tls/key/file")
+	viper.Set("operations.tls.clientAuthRequired", false)
+	viper.Set("operations.tls.clientRootCAs.files", []string{"relative/file1", "/absolute/file2"})
+
+	viper.Set("metrics.provider", "disabled")
+	viper.Set("metrics.statsd.network", "udp")
+	viper.Set("metrics.statsd.address", "127.0.0.1:8125")
+	viper.Set("metrics.statsd.writeInterval", "10s")
+	viper.Set("metrics.statsd.prefix", "testPrefix")
 
 	viper.Set("chaincode.pull", false)
+	viper.Set("chaincode.externalBuilders", &[]ExternalBuilder{
+		{
+			Path: "relative/plugin_dir",
+			Name: "relative",
+		},
+		{
+			Path: "/absolute/plugin_dir",
+			Name: "absolute",
+		},
+	})
 
 	coreConfig, err := GlobalConfig()
 	assert.NoError(t, err)
 
-	assert.Equal(t, coreConfig.LocalMspID, "SampleOrg")
-	assert.Equal(t, coreConfig.ListenAddress, "0.0.0.0:7051")
-	assert.Equal(t, coreConfig.AuthenticationTimeWindow, 15*time.Minute)
-	assert.Equal(t, coreConfig.PeerTLSEnabled, false)
-	assert.Equal(t, coreConfig.NetworkID, "testNetwork")
-	assert.Equal(t, coreConfig.LimitsConcurrencyQSCC, 5000)
-	assert.Equal(t, coreConfig.DiscoveryEnabled, true)
-	assert.Equal(t, coreConfig.ProfileEnabled, false)
-	assert.Equal(t, coreConfig.ProfileListenAddress, "peer.authentication.timewindow")
-	assert.Equal(t, coreConfig.DiscoveryOrgMembersAllowed, false)
-	assert.Equal(t, coreConfig.DiscoveryAuthCacheEnabled, true)
-	assert.Equal(t, coreConfig.DiscoveryAuthCacheMaxSize, 1000)
-	assert.Equal(t, coreConfig.DiscoveryAuthCachePurgeRetentionRatio, 0.75)
-	assert.Equal(t, coreConfig.ChaincodeListenAddr, "0.0.0.0:7052")
-	assert.Equal(t, coreConfig.ChaincodeAddr, "0.0.0.0:7052")
-	assert.Equal(t, coreConfig.AdminListenAddr, "0.0.0.0:7055")
+	expectedConfig := &Config{
+		LocalMSPID:                            "SampleOrg",
+		ListenAddress:                         "0.0.0.0:7051",
+		AuthenticationTimeWindow:              15 * time.Minute,
+		PeerTLSEnabled:                        false,
+		PeerAddress:                           "localhost:8080",
+		PeerID:                                "testPeerID",
+		NetworkID:                             "testNetwork",
+		LimitsConcurrencyQSCC:                 5000,
+		DiscoveryEnabled:                      true,
+		ProfileEnabled:                        false,
+		ProfileListenAddress:                  "peer.authentication.timewindow",
+		DiscoveryOrgMembersAllowed:            false,
+		DiscoveryAuthCacheEnabled:             true,
+		DiscoveryAuthCacheMaxSize:             1000,
+		DiscoveryAuthCachePurgeRetentionRatio: 0.75,
+		ChaincodeListenAddress:                "0.0.0.0:7052",
+		ChaincodeAddress:                      "0.0.0.0:7052",
+		ValidatorPoolSize:                     1,
+		DeliverClientKeepaliveOptions:         comm.DefaultKeepaliveOptions,
 
-	assert.Equal(t, coreConfig.VMEndpoint, "unix:///var/run/docker.sock")
-	assert.Equal(t, coreConfig.VMDockerTLSEnabled, false)
-	assert.Equal(t, coreConfig.VMDockerAttachStdout, false)
+		VMEndpoint:           "unix:///var/run/docker.sock",
+		VMDockerTLSEnabled:   false,
+		VMDockerAttachStdout: false,
+		VMNetworkMode:        "TestingHost",
 
-	assert.Equal(t, coreConfig.ChaincodePull, false)
+		ChaincodePull: false,
+		ExternalBuilders: []ExternalBuilder{
+			{
+				Path: "relative/plugin_dir",
+				Name: "relative",
+			},
+			{
+				Path: "/absolute/plugin_dir",
+				Name: "absolute",
+			},
+		},
+		OperationsListenAddress:         "127.0.0.1:9443",
+		OperationsTLSEnabled:            false,
+		OperationsTLSCertFile:           filepath.Join(cwd, "test/tls/cert/file"),
+		OperationsTLSKeyFile:            filepath.Join(cwd, "test/tls/key/file"),
+		OperationsTLSClientAuthRequired: false,
+		OperationsTLSClientRootCAs: []string{
+			filepath.Join(cwd, "relative", "file1"),
+			"/absolute/file2",
+		},
 
-	assert.Equal(t, coreConfig.PeerAddress, "localhost:8080")
-	assert.Equal(t, coreConfig.PeerID, "testPeerID")
-	assert.Equal(t, coreConfig.PeerEndpoint.Id.Name, "testPeerID")
-	assert.Equal(t, coreConfig.PeerEndpoint.Address, "localhost:8080")
+		MetricsProvider:     "disabled",
+		StatsdNetwork:       "udp",
+		StatsdAaddress:      "127.0.0.1:8125",
+		StatsdWriteInterval: 10 * time.Second,
+		StatsdPrefix:        "testPrefix",
 
+		DockerCert: filepath.Join(cwd, "test/vm/tls/cert/file"),
+		DockerKey:  filepath.Join(cwd, "test/vm/tls/key/file"),
+		DockerCA:   filepath.Join(cwd, "test/vm/tls/ca/file"),
+	}
+
+	assert.Equal(t, coreConfig, expectedConfig)
+}
+
+func TestGlobalConfigDefault(t *testing.T) {
+	defer viper.Reset()
+	viper.Set("peer.address", "localhost:8080")
+
+	coreConfig, err := GlobalConfig()
+	assert.NoError(t, err)
+
+	expectedConfig := &Config{
+		AuthenticationTimeWindow:      15 * time.Minute,
+		PeerAddress:                   "localhost:8080",
+		ValidatorPoolSize:             runtime.NumCPU(),
+		VMNetworkMode:                 "host",
+		DeliverClientKeepaliveOptions: comm.DefaultKeepaliveOptions,
+	}
+
+	assert.Equal(t, expectedConfig, coreConfig)
+}
+
+func TestMissingExternalBuilderPath(t *testing.T) {
+	defer viper.Reset()
+	viper.Set("peer.address", "localhost:8080")
+	viper.Set("chaincode.externalBuilders", &[]ExternalBuilder{
+		{
+			Name: "testName",
+		},
+	})
+	_, err := GlobalConfig()
+	assert.EqualError(t, err, "invalid external builder configuration, path attribute missing in one or more builders")
+}
+
+func TestMissingExternalBuilderName(t *testing.T) {
+	defer viper.Reset()
+	viper.Set("peer.address", "localhost:8080")
+	viper.Set("chaincode.externalBuilders", &[]ExternalBuilder{
+		{
+			Path: "relative/plugin_dir",
+		},
+	})
+	_, err := GlobalConfig()
+	assert.EqualError(t, err, "external builder at path relative/plugin_dir has no name attribute")
 }

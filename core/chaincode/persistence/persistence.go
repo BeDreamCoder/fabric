@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric/common/chaincode"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/util"
-	"github.com/hyperledger/fabric/core/chaincode/persistence/intf"
 
 	"github.com/pkg/errors"
 )
@@ -30,7 +29,8 @@ type IOReadWriter interface {
 	ReadDir(string) ([]os.FileInfo, error)
 	ReadFile(string) ([]byte, error)
 	Remove(name string) error
-	WriteFile(string, []byte, os.FileMode) error
+	WriteFile(string, string, []byte) error
+	MakeDir(string, os.FileMode) error
 	Exists(path string) (bool, error)
 }
 
@@ -38,9 +38,37 @@ type IOReadWriter interface {
 type FilesystemIO struct {
 }
 
-// WriteFile writes a file to the filesystem
-func (f *FilesystemIO) WriteFile(filename string, data []byte, perm os.FileMode) error {
-	return ioutil.WriteFile(filename, data, perm)
+// WriteFile writes a file to the filesystem; it does so atomically
+// by first writing to a temp file and then renaming the file so that
+// if the operation crashes midway we're not stuck with a bad package
+func (f *FilesystemIO) WriteFile(path, name string, data []byte) error {
+	if path == "" {
+		return errors.New("empty path not allowed")
+	}
+	tmpFile, err := ioutil.TempFile(path, ".ccpackage.")
+	if err != nil {
+		return errors.Wrapf(err, "error creating temp file in directory '%s'", path)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if n, err := tmpFile.Write(data); err != nil || n != len(data) {
+		if err == nil {
+			err = errors.Errorf(
+				"failed to write the entire content of the file, expected %d, wrote %d",
+				len(data), n)
+		}
+		return errors.Wrapf(err, "error writing to temp file '%s'", tmpFile.Name())
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return errors.Wrapf(err, "error closing temp file '%s'", tmpFile.Name())
+	}
+
+	if err := os.Rename(tmpFile.Name(), filepath.Join(path, name)); err != nil {
+		return errors.Wrapf(err, "error renaming temp file '%s'", tmpFile.Name())
+	}
+
+	return nil
 }
 
 // Remove removes a file from the filesystem - used for rolling back an in-flight
@@ -59,12 +87,19 @@ func (f *FilesystemIO) ReadDir(dirname string) ([]os.FileInfo, error) {
 	return ioutil.ReadDir(dirname)
 }
 
+// MakeDir makes a directory on the filesystem (and any
+// necessary parent directories).
+func (f *FilesystemIO) MakeDir(dirname string, mode os.FileMode) error {
+	return os.MkdirAll(dirname, mode)
+}
+
 // Exists checks whether a file exists
 func (*FilesystemIO) Exists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {
 		return true, nil
-	} else if os.IsNotExist(err) {
+	}
+	if os.IsNotExist(err) {
 		return false, nil
 	}
 
@@ -77,20 +112,51 @@ type Store struct {
 	ReadWriter IOReadWriter
 }
 
+// NewStore creates a new chaincode persistence store using
+// the provided path on the filesystem.
+func NewStore(path string) *Store {
+	store := &Store{
+		Path:       path,
+		ReadWriter: &FilesystemIO{},
+	}
+	store.Initialize()
+	return store
+}
+
+// Initialize checks for the existence of the _lifecycle chaincodes
+// directory and creates it if it has not yet been created.
+func (s *Store) Initialize() {
+	var (
+		exists bool
+		err    error
+	)
+	if exists, err = s.ReadWriter.Exists(s.Path); exists {
+		return
+	}
+	if err != nil {
+		panic(fmt.Sprintf("Initialization of chaincode store failed: %s", err))
+	}
+	if err = s.ReadWriter.MakeDir(s.Path, 0750); err != nil {
+		panic(fmt.Sprintf("Could not create _lifecycle chaincodes install path: %s", err))
+	}
+}
+
 // Save persists chaincode install package bytes. It returns
 // the hash of the chaincode install package
-func (s *Store) Save(label string, ccInstallPkg []byte) (persistence.PackageID, error) {
+func (s *Store) Save(label string, ccInstallPkg []byte) (string, error) {
 	hash := util.ComputeSHA256(ccInstallPkg)
 	packageID := packageID(label, hash)
-	ccInstallPkgPath := packagePath(s.Path, packageID)
 
-	if exists, _ := s.ReadWriter.Exists(ccInstallPkgPath); exists {
+	ccInstallPkgFileName := CCFileName(packageID)
+	ccInstallPkgFilePath := filepath.Join(s.Path, ccInstallPkgFileName)
+
+	if exists, _ := s.ReadWriter.Exists(ccInstallPkgFilePath); exists {
 		// chaincode install package was already installed
 		return packageID, nil
 	}
 
-	if err := s.ReadWriter.WriteFile(ccInstallPkgPath, ccInstallPkg, 0600); err != nil {
-		err = errors.Wrapf(err, "error writing chaincode install package to %s", ccInstallPkgPath)
+	if err := s.ReadWriter.WriteFile(s.Path, ccInstallPkgFileName, ccInstallPkg); err != nil {
+		err = errors.Wrapf(err, "error writing chaincode install package to %s", ccInstallPkgFilePath)
 		logger.Error(err.Error())
 		return "", err
 	}
@@ -98,11 +164,10 @@ func (s *Store) Save(label string, ccInstallPkg []byte) (persistence.PackageID, 
 	return packageID, nil
 }
 
-// Load loads a persisted chaincode install package bytes with the given hash
-// and also returns the chaincode metadata (names and versions) of any chaincode
-// installed with a matching hash
-func (s *Store) Load(packageID persistence.PackageID) ([]byte, error) {
-	ccInstallPkgPath := packagePath(s.Path, packageID)
+// Load loads a persisted chaincode install package bytes with
+// the given packageID.
+func (s *Store) Load(packageID string) ([]byte, error) {
+	ccInstallPkgPath := filepath.Join(s.Path, CCFileName(packageID))
 
 	exists, err := s.ReadWriter.Exists(ccInstallPkgPath)
 	if err != nil {
@@ -123,10 +188,18 @@ func (s *Store) Load(packageID persistence.PackageID) ([]byte, error) {
 	return ccInstallPkg, nil
 }
 
+// Delete deletes a persisted chaincode.  Note, there is no locking,
+// so this should only be performed if the chaincode has already
+// been marked built.
+func (s *Store) Delete(packageID string) error {
+	ccInstallPkgPath := filepath.Join(s.Path, CCFileName(packageID))
+	return s.ReadWriter.Remove(ccInstallPkgPath)
+}
+
 // CodePackageNotFoundErr is the error returned when a code package cannot
 // be found in the persistence store
 type CodePackageNotFoundErr struct {
-	PackageID persistence.PackageID
+	PackageID string
 }
 
 func (e CodePackageNotFoundErr) Error() string {
@@ -156,15 +229,15 @@ func (s *Store) GetChaincodeInstallPath() string {
 	return s.Path
 }
 
-func packageID(label string, hash []byte) persistence.PackageID {
-	return persistence.PackageID(fmt.Sprintf("%s:%x", label, hash))
+func packageID(label string, hash []byte) string {
+	return fmt.Sprintf("%s:%x", label, hash)
 }
 
-var packageFileMatcher = regexp.MustCompile("^(.+):([0-9abcdef]+)[.]bin$")
-
-func packagePath(path string, packageID persistence.PackageID) string {
-	return filepath.Join(path, packageID.String()+".bin")
+func CCFileName(packageID string) string {
+	return packageID + ".tar.gz"
 }
+
+var packageFileMatcher = regexp.MustCompile("^(.+):([0-9abcdef]+)[.]tar[.]gz$")
 
 func installedChaincodeFromFilename(fileName string) (chaincode.InstalledChaincode, bool) {
 	matches := packageFileMatcher.FindStringSubmatch(fileName)

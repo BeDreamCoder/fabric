@@ -7,19 +7,19 @@ SPDX-License-Identifier: Apache-2.0
 package encoder
 
 import (
-	"github.com/gogo/protobuf/proto"
+	"github.com/golang/protobuf/proto"
+	cb "github.com/hyperledger/fabric-protos-go/common"
+	pb "github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/common/cauthdsl"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/genesis"
 	"github.com/hyperledger/fabric/common/policies"
 	"github.com/hyperledger/fabric/common/util"
-	genesisconfig "github.com/hyperledger/fabric/internal/configtxgen/localconfig"
+	"github.com/hyperledger/fabric/internal/configtxgen/genesisconfig"
 	"github.com/hyperledger/fabric/internal/configtxlator/update"
 	"github.com/hyperledger/fabric/internal/pkg/identity"
 	"github.com/hyperledger/fabric/msp"
-	cb "github.com/hyperledger/fabric/protos/common"
-	pb "github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 )
@@ -126,11 +126,9 @@ func NewChannelGroup(conf *genesisconfig.Profile) (*cb.ConfigGroup, error) {
 
 	addValue(channelGroup, channelconfig.HashingAlgorithmValue(), channelconfig.AdminsPolicyKey)
 	addValue(channelGroup, channelconfig.BlockDataHashingStructureValue(), channelconfig.AdminsPolicyKey)
-	ordererAddresses := []string{}
-	if conf.Orderer != nil {
-		ordererAddresses = conf.Orderer.Addresses
+	if conf.Orderer != nil && len(conf.Orderer.Addresses) > 0 {
+		addValue(channelGroup, channelconfig.OrdererAddressesValue(conf.Orderer.Addresses), ordererAdminsPolicyName)
 	}
-	addValue(channelGroup, channelconfig.OrdererAddressesValue(ordererAddresses), ordererAdminsPolicyName)
 
 	if conf.Consortium != "" {
 		addValue(channelGroup, channelconfig.ConsortiumValue(conf.Consortium), channelconfig.AdminsPolicyKey)
@@ -219,6 +217,30 @@ func NewOrdererGroup(conf *genesisconfig.Orderer) (*cb.ConfigGroup, error) {
 	return ordererGroup, nil
 }
 
+// NewConsortiumsGroup returns an org component of the channel configuration.  It defines the crypto material for the
+// organization (its MSP).  It sets the mod_policy of all elements to "Admins".
+func NewConsortiumOrgGroup(conf *genesisconfig.Organization) (*cb.ConfigGroup, error) {
+	consortiumsOrgGroup := protoutil.NewConfigGroup()
+	consortiumsOrgGroup.ModPolicy = channelconfig.AdminsPolicyKey
+
+	if conf.SkipAsForeign {
+		return consortiumsOrgGroup, nil
+	}
+
+	mspConfig, err := msp.GetVerifyingMspConfig(conf.MSPDir, conf.ID, conf.MSPType)
+	if err != nil {
+		return nil, errors.Wrapf(err, "1 - Error loading MSP configuration for org: %s", conf.Name)
+	}
+
+	if err := AddPolicies(consortiumsOrgGroup, conf.Policies, channelconfig.AdminsPolicyKey); err != nil {
+		return nil, errors.Wrapf(err, "error adding policies to consortiums org group '%s'", conf.Name)
+	}
+
+	addValue(consortiumsOrgGroup, channelconfig.MSPValue(mspConfig), channelconfig.AdminsPolicyKey)
+
+	return consortiumsOrgGroup, nil
+}
+
 // NewOrdererOrgGroup returns an orderer org component of the channel configuration.  It defines the crypto material for the
 // organization (its MSP).  It sets the mod_policy of all elements to "Admins".
 func NewOrdererOrgGroup(conf *genesisconfig.Organization) (*cb.ConfigGroup, error) {
@@ -239,6 +261,10 @@ func NewOrdererOrgGroup(conf *genesisconfig.Organization) (*cb.ConfigGroup, erro
 	}
 
 	addValue(ordererOrgGroup, channelconfig.MSPValue(mspConfig), channelconfig.AdminsPolicyKey)
+
+	if len(conf.OrdererEndpoints) > 0 {
+		addValue(ordererOrgGroup, channelconfig.EndpointsValue(conf.OrdererEndpoints), channelconfig.AdminsPolicyKey)
+	}
 
 	return ordererOrgGroup, nil
 }
@@ -337,8 +363,7 @@ func NewConsortiumGroup(conf *genesisconfig.Consortium) (*cb.ConfigGroup, error)
 
 	for _, org := range conf.Organizations {
 		var err error
-		// Note, NewOrdererOrgGroup is correct here, as the structure is identical
-		consortiumGroup.Groups[org.Name], err = NewOrdererOrgGroup(org)
+		consortiumGroup.Groups[org.Name], err = NewConsortiumOrgGroup(org)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create consortium org")
 		}
@@ -579,9 +604,10 @@ func New(config *genesisconfig.Profile) *Bootstrapper {
 	return bs
 }
 
-// GenesisBlock produces a genesis block for the default test chain id
+// GenesisBlock produces a genesis block for the default test channel id
 func (bs *Bootstrapper) GenesisBlock() *cb.Block {
-	return genesis.NewFactoryImpl(bs.channelGroup).Block(genesisconfig.TestChainID)
+	// TODO(mjs): remove
+	return genesis.NewFactoryImpl(bs.channelGroup).Block("testchannelid")
 }
 
 // GenesisBlockForChannel produces a genesis block for a given channel ID

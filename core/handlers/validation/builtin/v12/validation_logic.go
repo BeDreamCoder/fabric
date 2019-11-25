@@ -12,46 +12,77 @@ import (
 	"regexp"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/ledger/rwset/kvrwset"
+	"github.com/hyperledger/fabric-protos-go/msp"
+	pb "github.com/hyperledger/fabric-protos-go/peer"
 	commonerrors "github.com/hyperledger/fabric/common/errors"
 	"github.com/hyperledger/fabric/common/flogging"
-	"github.com/hyperledger/fabric/core/chaincode/platforms"
-	"github.com/hyperledger/fabric/core/chaincode/platforms/ccmetadata"
-	"github.com/hyperledger/fabric/core/chaincode/platforms/golang"
-	"github.com/hyperledger/fabric/core/chaincode/platforms/java"
-	"github.com/hyperledger/fabric/core/chaincode/platforms/node"
 	"github.com/hyperledger/fabric/core/common/ccprovider"
 	"github.com/hyperledger/fabric/core/common/privdata"
-	. "github.com/hyperledger/fabric/core/handlers/validation/api/capabilities"
-	. "github.com/hyperledger/fabric/core/handlers/validation/api/identities"
-	. "github.com/hyperledger/fabric/core/handlers/validation/api/policies"
-	. "github.com/hyperledger/fabric/core/handlers/validation/api/state"
-	"github.com/hyperledger/fabric/core/handlers/validation/builtin/internal/car"
+	vc "github.com/hyperledger/fabric/core/handlers/validation/api/capabilities"
+	vi "github.com/hyperledger/fabric/core/handlers/validation/api/identities"
+	vp "github.com/hyperledger/fabric/core/handlers/validation/api/policies"
+	vs "github.com/hyperledger/fabric/core/handlers/validation/api/state"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	"github.com/hyperledger/fabric/core/scc/lscc"
-	"github.com/hyperledger/fabric/protos/common"
-	"github.com/hyperledger/fabric/protos/ledger/rwset/kvrwset"
-	"github.com/hyperledger/fabric/protos/msp"
-	pb "github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 )
 
-var logger = flogging.MustGetLogger("vscc")
+var (
+	logger = flogging.MustGetLogger("vscc")
+
+	// currently defined system chaincode names that shouldn't
+	// be allowed as user-defined chaincode names
+	systemChaincodeNames = map[string]struct{}{
+		"cscc": {},
+		"escc": {},
+		"lscc": {},
+		"qscc": {},
+		"vscc": {},
+	}
+)
 
 const (
 	DUPLICATED_IDENTITY_ERROR = "Endorsement policy evaluation failure might be caused by duplicated identities"
 )
 
-var validCollectionNameRegex = regexp.MustCompile(ccmetadata.AllowedCharsCollectionName)
+const AllowedCharsCollectionName = "[A-Za-z0-9_-]+"
 
-//go:generate mockery -dir ../../api/capabilities/ -name Capabilities -case underscore -output mocks/
-//go:generate mockery -dir ../../api/state/ -name StateFetcher -case underscore -output mocks/
-//go:generate mockery -dir ../../api/identities/ -name IdentityDeserializer -case underscore -output mocks/
-//go:generate mockery -dir ../../api/policies/ -name PolicyEvaluator -case underscore -output mocks/
+var validCollectionNameRegex = regexp.MustCompile(AllowedCharsCollectionName)
+
+//go:generate mockery -dir . -name Capabilities -case underscore -output mocks/
+
+// Capabilities is the local interface that used to generate mocks for foreign interface.
+type Capabilities interface {
+	vc.Capabilities
+}
+
+//go:generate mockery -dir . -name StateFetcher -case underscore -output mocks/
+
+// StateFetcher is the local interface that used to generate mocks for foreign interface.
+type StateFetcher interface {
+	vs.StateFetcher
+}
+
+//go:generate mockery -dir . -name IdentityDeserializer -case underscore -output mocks/
+
+// IdentityDeserializer is the local interface that used to generate mocks for foreign interface.
+type IdentityDeserializer interface {
+	vi.IdentityDeserializer
+}
+
+//go:generate mockery -dir . -name PolicyEvaluator -case underscore -output mocks/
+
+// PolicyEvaluator is the local interface that used to generate mocks for foreign interface.
+type PolicyEvaluator interface {
+	vp.PolicyEvaluator
+}
 
 // New creates a new instance of the default VSCC
-// Typically this will only be invoked once per peer
-func New(c Capabilities, s StateFetcher, d IdentityDeserializer, pe PolicyEvaluator) *Validator {
+// Typically this will only be invoked once per peer.
+func New(c vc.Capabilities, s vs.StateFetcher, d vi.IdentityDeserializer, pe vp.PolicyEvaluator) *Validator {
 	return &Validator{
 		capabilities:    c,
 		stateFetcher:    s,
@@ -63,16 +94,16 @@ func New(c Capabilities, s StateFetcher, d IdentityDeserializer, pe PolicyEvalua
 // Validator implements the default transaction validation policy,
 // which is to check the correctness of the read-write set and the endorsement
 // signatures against an endorsement policy that is supplied as argument to
-// every invoke
+// every invoke.
 type Validator struct {
-	deserializer    IdentityDeserializer
-	capabilities    Capabilities
-	stateFetcher    StateFetcher
-	policyEvaluator PolicyEvaluator
+	deserializer    vi.IdentityDeserializer
+	capabilities    vc.Capabilities
+	stateFetcher    vs.StateFetcher
+	policyEvaluator vp.PolicyEvaluator
 }
 
 // Validate validates the given envelope corresponding to a transaction with an endorsement
-// policy as given in its serialized form
+// policy as given in its serialized form.
 func (vscc *Validator) Validate(
 	block *common.Block,
 	namespace string,
@@ -88,7 +119,7 @@ func (vscc *Validator) Validate(
 	}
 
 	// ...and the payload...
-	payl, err := protoutil.GetPayload(env)
+	payl, err := protoutil.UnmarshalPayload(env.Payload)
 	if err != nil {
 		logger.Errorf("VSCC error: GetPayload failed, err %s", err)
 		return policyErr(err)
@@ -106,13 +137,13 @@ func (vscc *Validator) Validate(
 	}
 
 	// ...and the transaction...
-	tx, err := protoutil.GetTransaction(payl.Data)
+	tx, err := protoutil.UnmarshalTransaction(payl.Data)
 	if err != nil {
 		logger.Errorf("VSCC error: GetTransaction failed, err %s", err)
 		return policyErr(err)
 	}
 
-	cap, err := protoutil.GetChaincodeActionPayload(tx.Actions[actionPosition].Payload)
+	cap, err := protoutil.UnmarshalChaincodeActionPayload(tx.Actions[actionPosition].Payload)
 	if err != nil {
 		logger.Errorf("VSCC error: GetChaincodeActionPayload failed, err %s", err)
 		return policyErr(err)
@@ -147,10 +178,10 @@ func (vscc *Validator) Validate(
 	return nil
 }
 
-// checkInstantiationPolicy evaluates an instantiation policy against a signed proposal
+// checkInstantiationPolicy evaluates an instantiation policy against a signed proposal.
 func (vscc *Validator) checkInstantiationPolicy(chainName string, env *common.Envelope, instantiationPolicy []byte, payl *common.Payload) commonerrors.TxValidationError {
 	// get the signature header
-	shdr, err := protoutil.GetSignatureHeader(payl.Header.SignatureHeader)
+	shdr, err := protoutil.UnmarshalSignatureHeader(payl.Header.SignatureHeader)
 	if err != nil {
 		return policyErr(err)
 	}
@@ -168,7 +199,7 @@ func (vscc *Validator) checkInstantiationPolicy(chainName string, env *common.En
 	return nil
 }
 
-func validateNewCollectionConfigs(newCollectionConfigs []*common.CollectionConfig) error {
+func validateNewCollectionConfigs(newCollectionConfigs []*pb.CollectionConfig) error {
 	newCollectionsMap := make(map[string]bool, len(newCollectionConfigs))
 	// Process each collection config from a set of collection configs
 	for _, newCollectionConfig := range newCollectionConfigs {
@@ -195,7 +226,7 @@ func validateNewCollectionConfigs(newCollectionConfigs []*common.CollectionConfi
 		maximumPeerCount := newCollection.GetMaximumPeerCount()
 		requiredPeerCount := newCollection.GetRequiredPeerCount()
 		if maximumPeerCount < requiredPeerCount {
-			return fmt.Errorf("collection-name: %s -- maximum peer count (%d) cannot be greater than the required peer count (%d)",
+			return fmt.Errorf("collection-name: %s -- maximum peer count (%d) cannot be less than the required peer count (%d)",
 				collectionName, maximumPeerCount, requiredPeerCount)
 
 		}
@@ -214,7 +245,7 @@ func validateNewCollectionConfigs(newCollectionConfigs []*common.CollectionConfi
 	return nil
 }
 
-// validateSpOrConcat checks if the supplied signature policy is just an OR-concatenation of identities
+// validateSpOrConcat checks if the supplied signature policy is just an OR-concatenation of identities.
 func validateSpOrConcat(sp *common.SignaturePolicy) error {
 	if sp.GetNOutOf() == nil {
 		return nil
@@ -233,7 +264,7 @@ func validateSpOrConcat(sp *common.SignaturePolicy) error {
 	return nil
 }
 
-func checkForMissingCollections(newCollectionsMap map[string]*common.StaticCollectionConfig, oldCollectionConfigs []*common.CollectionConfig,
+func checkForMissingCollections(newCollectionsMap map[string]*pb.StaticCollectionConfig, oldCollectionConfigs []*pb.CollectionConfig,
 ) error {
 	var missingCollections []string
 
@@ -263,7 +294,7 @@ func checkForMissingCollections(newCollectionsMap map[string]*common.StaticColle
 	return nil
 }
 
-func checkForModifiedCollectionsBTL(newCollectionsMap map[string]*common.StaticCollectionConfig, oldCollectionConfigs []*common.CollectionConfig,
+func checkForModifiedCollectionsBTL(newCollectionsMap map[string]*pb.StaticCollectionConfig, oldCollectionConfigs []*pb.CollectionConfig,
 ) error {
 	var modifiedCollectionsBTL []string
 
@@ -293,9 +324,9 @@ func checkForModifiedCollectionsBTL(newCollectionsMap map[string]*common.StaticC
 	return nil
 }
 
-func validateNewCollectionConfigsAgainstOld(newCollectionConfigs []*common.CollectionConfig, oldCollectionConfigs []*common.CollectionConfig,
+func validateNewCollectionConfigsAgainstOld(newCollectionConfigs []*pb.CollectionConfig, oldCollectionConfigs []*pb.CollectionConfig,
 ) error {
-	newCollectionsMap := make(map[string]*common.StaticCollectionConfig, len(newCollectionConfigs))
+	newCollectionsMap := make(map[string]*pb.StaticCollectionConfig, len(newCollectionConfigs))
 
 	for _, newCollectionConfig := range newCollectionConfigs {
 		newCollection := newCollectionConfig.GetStaticCollectionConfig()
@@ -322,20 +353,20 @@ func validateCollectionName(collectionName string) error {
 	match := validCollectionNameRegex.FindString(collectionName)
 	if len(match) != len(collectionName) {
 		return fmt.Errorf("collection-name: %s not allowed. A valid collection name follows the pattern: %s",
-			collectionName, ccmetadata.AllowedCharsCollectionName)
+			collectionName, AllowedCharsCollectionName)
 	}
 	return nil
 }
 
 // validateRWSetAndCollection performs validation of the rwset
 // of an LSCC deploy operation and then it validates any collection
-// configuration
+// configuration.
 func (vscc *Validator) validateRWSetAndCollection(
 	lsccrwset *kvrwset.KVRWSet,
 	cdRWSet *ccprovider.ChaincodeData,
 	lsccArgs [][]byte,
 	lsccFunc string,
-	ac Capabilities,
+	ac vc.Capabilities,
 	channelName string,
 ) commonerrors.TxValidationError {
 	/********************************************/
@@ -383,7 +414,7 @@ func (vscc *Validator) validateRWSetAndCollection(
 	// The following condition check added in v1.1 may not be needed as it is not possible to have the chaincodeName~collection key in
 	// the lscc namespace before a chaincode deploy. To avoid forks in v1.2, the following condition is retained.
 	if lsccFunc == lscc.DEPLOY {
-		colCriteria := common.CollectionCriteria{Channel: channelName, Namespace: cdRWSet.Name}
+		colCriteria := privdata.CollectionCriteria{Channel: channelName, Namespace: cdRWSet.Name}
 		ccp, err := privdata.RetrieveCollectionConfigPackageFromState(colCriteria, state)
 		if err != nil {
 			// fail if we get any error other than NoSuchCollectionError
@@ -402,7 +433,7 @@ func (vscc *Validator) validateRWSetAndCollection(
 
 	// TODO: Once the new chaincode lifecycle is available (FAB-8724), the following validation
 	// and other validation performed in ValidateLSCCInvocation can be moved to LSCC itself.
-	newCollectionConfigPackage := &common.CollectionConfigPackage{}
+	newCollectionConfigPackage := &pb.CollectionConfigPackage{}
 
 	if collectionsConfigArg != nil {
 		err := proto.Unmarshal(collectionsConfigArg, newCollectionConfigPackage)
@@ -422,7 +453,7 @@ func (vscc *Validator) validateRWSetAndCollection(
 
 		if lsccFunc == lscc.UPGRADE {
 
-			collectionCriteria := common.CollectionCriteria{Channel: channelName, Namespace: cdRWSet.Name}
+			collectionCriteria := privdata.CollectionCriteria{Channel: channelName, Namespace: cdRWSet.Name}
 			// oldCollectionConfigPackage denotes the existing collection config package in the ledger
 			oldCollectionConfigPackage, err := privdata.RetrieveCollectionConfigPackageFromState(collectionCriteria, state)
 			if err != nil {
@@ -455,9 +486,9 @@ func (vscc *Validator) ValidateLSCCInvocation(
 	env *common.Envelope,
 	cap *pb.ChaincodeActionPayload,
 	payl *common.Payload,
-	ac Capabilities,
+	ac vc.Capabilities,
 ) commonerrors.TxValidationError {
-	cpp, err := protoutil.GetChaincodeProposalPayload(cap.ChaincodeProposalPayload)
+	cpp, err := protoutil.UnmarshalChaincodeProposalPayload(cap.ChaincodeProposalPayload)
 	if err != nil {
 		logger.Errorf("VSCC error: GetChaincodeProposalPayload failed, err %s", err)
 		return policyErr(err)
@@ -495,23 +526,9 @@ func (vscc *Validator) ValidateLSCCInvocation(
 			return policyErr(fmt.Errorf("Wrong number of arguments for invocation lscc(%s): received %d", lsccFunc, len(lsccArgs)))
 		}
 
-		cdsArgs, err := protoutil.GetChaincodeDeploymentSpec(lsccArgs[1])
+		cdsArgs, err := protoutil.UnmarshalChaincodeDeploymentSpec(lsccArgs[1])
 		if err != nil {
 			return policyErr(fmt.Errorf("GetChaincodeDeploymentSpec error %s", err))
-		}
-
-		err = platforms.NewRegistry(
-			// XXX We should definitely _not_ have this external dependency in VSCC
-			// as adding a platform could cause non-determinism.  This is yet another
-			// reason why all of this custom LSCC validation at commit time has no
-			// long term hope of staying deterministic and needs to be removed.
-			&golang.Platform{},
-			&node.Platform{},
-			&java.Platform{},
-			&car.Platform{},
-		).ValidateDeploymentSpec(cdsArgs.ChaincodeSpec.Type.String(), cdsArgs.CodePackage)
-		if err != nil {
-			return policyErr(fmt.Errorf("failed to validate deployment spec: %s", err))
 		}
 
 		if cdsArgs == nil || cdsArgs.ChaincodeSpec == nil || cdsArgs.ChaincodeSpec.ChaincodeId == nil ||
@@ -519,15 +536,39 @@ func (vscc *Validator) ValidateLSCCInvocation(
 			return policyErr(fmt.Errorf("VSCC error: invocation of lscc(%s) does not have appropriate arguments", lsccFunc))
 		}
 
+		switch cdsArgs.ChaincodeSpec.Type.String() {
+		case "GOLANG", "NODE", "JAVA", "CAR":
+		default:
+			return policyErr(fmt.Errorf("unexpected chaincode spec type: %s", cdsArgs.ChaincodeSpec.Type.String()))
+		}
+
+		// validate chaincode name
+		ccName := cdsArgs.ChaincodeSpec.ChaincodeId.Name
+		// it must comply with the lscc.ChaincodeNameRegExp
+		if !lscc.ChaincodeNameRegExp.MatchString(ccName) {
+			return policyErr(errors.Errorf("invalid chaincode name '%s'", ccName))
+		}
+		// it can't match the name of one of the system chaincodes
+		if _, in := systemChaincodeNames[ccName]; in {
+			return policyErr(errors.Errorf("chaincode name '%s' is reserved for system chaincodes", ccName))
+		}
+
+		// validate chaincode version
+		ccVersion := cdsArgs.ChaincodeSpec.ChaincodeId.Version
+		// it must comply with the lscc.ChaincodeVersionRegExp
+		if !lscc.ChaincodeVersionRegExp.MatchString(ccVersion) {
+			return policyErr(errors.Errorf("invalid chaincode version '%s'", ccVersion))
+		}
+
 		// get the rwset
-		pRespPayload, err := protoutil.GetProposalResponsePayload(cap.Action.ProposalResponsePayload)
+		pRespPayload, err := protoutil.UnmarshalProposalResponsePayload(cap.Action.ProposalResponsePayload)
 		if err != nil {
 			return policyErr(fmt.Errorf("GetProposalResponsePayload error %s", err))
 		}
 		if pRespPayload.Extension == nil {
 			return policyErr(fmt.Errorf("nil pRespPayload.Extension"))
 		}
-		respPayload, err := protoutil.GetChaincodeAction(pRespPayload.Extension)
+		respPayload, err := protoutil.UnmarshalChaincodeAction(pRespPayload.Extension)
 		if err != nil {
 			return policyErr(fmt.Errorf("GetChaincodeAction error %s", err))
 		}
@@ -776,10 +817,10 @@ func (vscc *Validator) deduplicateIdentity(cap *pb.ChaincodeActionPayload) ([]*p
 }
 
 type state struct {
-	State
+	vs.State
 }
 
-// GetState retrieves the value for the given key in the given namespace
+// GetState retrieves the value for the given key in the given namespace.
 func (s *state) GetState(namespace string, key string) ([]byte, error) {
 	values, err := s.GetStateMultipleKeys(namespace, []string{key})
 	if err != nil {

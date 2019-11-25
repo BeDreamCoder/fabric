@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	proto "github.com/hyperledger/fabric-protos-go/gossip"
 	common_utils "github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/gossip/api"
 	"github.com/hyperledger/fabric/gossip/comm"
@@ -28,7 +29,7 @@ import (
 	"github.com/hyperledger/fabric/gossip/metrics"
 	"github.com/hyperledger/fabric/gossip/protoext"
 	"github.com/hyperledger/fabric/gossip/util"
-	proto "github.com/hyperledger/fabric/protos/gossip"
+	"github.com/hyperledger/fabric/protoutil"
 )
 
 const DefMsgExpirationTimeout = election.DefLeaderAliveThreshold * 10
@@ -150,7 +151,7 @@ type gossipChannel struct {
 	blockMsgStore             msgstore.MessageStore
 	stateInfoMsgStore         *stateInfoCache
 	leaderMsgStore            msgstore.MessageStore
-	chainID                   common.ChainID
+	chainID                   common.ChannelID
 	blocksPuller              pull.Mediator
 	logger                    util.Logger
 	stateInfoPublishScheduler *time.Ticker
@@ -184,7 +185,7 @@ func (mf *membershipFilter) GetMembership() []discovery.NetworkMember {
 
 // NewGossipChannel creates a new GossipChannel
 func NewGossipChannel(pkiID common.PKIidType, org api.OrgIdentityType, mcs api.MessageCryptoService,
-	chainID common.ChainID, adapter Adapter, joinMsg api.JoinChannelMessage,
+	channelID common.ChannelID, adapter Adapter, joinMsg api.JoinChannelMessage,
 	metrics *metrics.MembershipMetrics, logger util.Logger) GossipChannel {
 	gc := &gossipChannel{
 		incTime:                   uint64(time.Now().UnixNano()),
@@ -197,7 +198,7 @@ func NewGossipChannel(pkiID common.PKIidType, org api.OrgIdentityType, mcs api.M
 		stateInfoPublishScheduler: time.NewTicker(adapter.GetConf().PublishStateInfoInterval),
 		stateInfoRequestScheduler: time.NewTicker(adapter.GetConf().RequestStateInfoInterval),
 		orgs:                      []api.OrgIdentityType{},
-		chainID:                   chainID,
+		chainID:                   channelID,
 	}
 
 	if logger == nil {
@@ -260,11 +261,11 @@ func NewGossipChannel(pkiID common.PKIidType, org api.OrgIdentityType, mcs api.M
 
 		org := gc.GetOrgOfPeer(si.PkiId)
 		if !isOrgInChan(org) {
-			gc.logger.Warning("peer", peerIdentity, "'s organization(", string(org), ") isn't in the channel", string(chainID))
+			gc.logger.Warning("peer", peerIdentity, "'s organization(", string(org), ") isn't in the channel", string(channelID))
 			return false
 		}
-		if err := gc.mcs.VerifyByChannel(chainID, peerIdentity, msg.Signature, msg.Payload); err != nil {
-			gc.logger.Warningf("Peer %v isn't eligible for channel %s : %+v", peerIdentity, string(chainID), err)
+		if err := gc.mcs.VerifyByChannel(channelID, peerIdentity, msg.Signature, msg.Payload); err != nil {
+			gc.logger.Warningf("Peer %v isn't eligible for channel %s : %+v", peerIdentity, string(channelID), err)
 			return false
 		}
 		return true
@@ -290,7 +291,7 @@ func NewGossipChannel(pkiID common.PKIidType, org api.OrgIdentityType, mcs api.M
 		stopChan:        make(chan struct{}, 1),
 		tickerChannel:   ticker.C,
 		metrics:         metrics,
-		chainID:         chainID,
+		chainID:         channelID,
 	}
 
 	go gc.membershipTracker.trackMembershipChanges()
@@ -298,7 +299,9 @@ func NewGossipChannel(pkiID common.PKIidType, org api.OrgIdentityType, mcs api.M
 }
 
 func (gc *gossipChannel) reportMembershipChanges(input ...interface{}) {
-	gc.logger.Info(input...)
+	args := []interface{}{fmt.Sprintf("[%s]", string(gc.chainID))}
+	args = append(args, input...)
+	gc.logger.Info(args)
 }
 
 // Stop stop the channel operations
@@ -694,6 +697,18 @@ func (gc *gossipChannel) HandleMessage(msg protoext.ReceivedMessage) {
 	}
 
 	if protoext.IsLeadershipMsg(m.GossipMessage) {
+		connInfo := msg.GetConnectionInfo()
+		senderOrg := gc.GetOrgOfPeer(connInfo.ID)
+		if !bytes.Equal(gc.selfOrg, senderOrg) {
+			gc.logger.Warningf("Received leadership message from %s that belongs to a foreign organization %s",
+				connInfo.Endpoint, string(senderOrg))
+			return
+		}
+		msgCreatorOrg := gc.GetOrgOfPeer(m.GetLeadershipMsg().PkiId)
+		if !bytes.Equal(gc.selfOrg, msgCreatorOrg) {
+			gc.logger.Warningf("Received leadership message created by a foreign organization %s", string(msgCreatorOrg))
+			return
+		}
 		// Handling leadership message
 		added := gc.leaderMsgStore.Add(m)
 		if added {
@@ -763,7 +778,13 @@ func (gc *gossipChannel) verifyBlock(msg *proto.GossipMessage, sender common.PKI
 	}
 	seqNum := payload.SeqNum
 	rawBlock := payload.Data
-	err := gc.mcs.VerifyBlock(msg.Channel, seqNum, rawBlock)
+	block, err := protoutil.UnmarshalBlock(rawBlock)
+	if err != nil {
+		gc.logger.Warningf("Received improperly encoded block from %v in DataUpdate: %+v", sender, err)
+		return false
+	}
+
+	err = gc.mcs.VerifyBlock(msg.Channel, seqNum, block)
 	if err != nil {
 		gc.logger.Warningf("Received fabricated block from %v in DataUpdate: %+v", sender, err)
 		return false
@@ -1012,7 +1033,7 @@ func (cache *stateInfoCache) Stop() {
 
 // GenerateMAC returns a byte slice that is derived from the peer's PKI-ID
 // and a channel name
-func GenerateMAC(pkiID common.PKIidType, channelID common.ChainID) []byte {
+func GenerateMAC(pkiID common.PKIidType, channelID common.ChannelID) []byte {
 	// Hash is computed on (PKI-ID || channel ID)
 	var preImage []byte
 	preImage = append(preImage, []byte(pkiID)...)
@@ -1027,7 +1048,7 @@ type membershipTracker struct {
 	stopChan        chan struct{}
 	tickerChannel   <-chan time.Time
 	metrics         *metrics.MembershipMetrics
-	chainID         common.ChainID
+	chainID         common.ChannelID
 }
 
 //endpoints return all peers by their endpoints
@@ -1083,23 +1104,19 @@ func (mt *membershipTracker) createSetOfPeers(peersToMakeSet []discovery.Network
 }
 
 func (mt *membershipTracker) trackMembershipChanges() {
-	prevSetPeers := make(map[string]struct{})
 	prev := mt.getPeersToTrack()
-	prevSetPeers = mt.createSetOfPeers(prev)
+	prevSetPeers := mt.createSetOfPeers(prev)
 	for {
-		currSetPeers := make(map[string]struct{})
 		//timeout to check changes in peers
 		select {
 		case <-mt.stopChan:
 			return
 		case <-mt.tickerChannel:
-			//get current peers
 			currPeers := mt.getPeersToTrack()
 			mt.metrics.Total.With("channel", string(mt.chainID)).Set(float64(len(currPeers)))
-			currSetPeers = mt.createSetOfPeers(currPeers)
+			currSetPeers := mt.createSetOfPeers(currPeers)
 			mt.checkIfPeersChanged(prev, currPeers, prevSetPeers, currSetPeers)
 			prev = currPeers
-			prevSetPeers = map[string]struct{}{}
 			prevSetPeers = mt.createSetOfPeers(prev)
 		}
 	}

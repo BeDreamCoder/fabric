@@ -7,9 +7,16 @@ package lockbasedtxmgr
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
+	"github.com/hyperledger/fabric-protos-go/ledger/rwset"
+	"github.com/hyperledger/fabric-protos-go/peer"
+	"github.com/hyperledger/fabric/bccsp/sw"
+	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/testutil"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/bookkeeping"
@@ -20,18 +27,26 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/pvtdatapolicy"
 	btltestutil "github.com/hyperledger/fabric/core/ledger/pvtdatapolicy/testutil"
 	"github.com/hyperledger/fabric/core/ledger/util"
-	"github.com/hyperledger/fabric/protos/common"
-	"github.com/hyperledger/fabric/protos/ledger/queryresult"
-	"github.com/hyperledger/fabric/protos/ledger/rwset"
 	"github.com/stretchr/testify/assert"
 )
 
+func TestMain(m *testing.M) {
+	flogging.ActivateSpec(
+		"lockbasedtxmgr,statevalidator,statebasedval,statecouchdb,valimpl,pvtstatepurgemgmt,valinternal=debug",
+	)
+	exitCode := m.Run()
+	for _, testEnv := range testEnvs {
+		testEnv.cleanup()
+	}
+	os.Exit(exitCode)
+}
+
 type testEnv interface {
-	init(t *testing.T, testLedgerID string, btlPolicy pvtdatapolicy.BTLPolicy)
+	cleanup()
 	getName() string
 	getTxMgr() txmgr.TxMgr
 	getVDB() privacyenabledstate.DB
-	cleanup()
+	init(t *testing.T, testLedgerID string, btlPolicy pvtdatapolicy.BTLPolicy)
 }
 
 const (
@@ -54,15 +69,13 @@ var testEnvsMap = map[string]testEnv{
 ///////////// LevelDB Environment //////////////
 
 type lockBasedEnv struct {
-	t    testing.TB
-	name string
-
-	testDBEnv privacyenabledstate.TestEnv
-	testDB    privacyenabledstate.DB
-
+	dbInitialized      bool
+	name               string
+	t                  testing.TB
 	testBookkeepingEnv *bookkeeping.TestEnv
-
-	txmgr txmgr.TxMgr
+	testDB             privacyenabledstate.DB
+	testDBEnv          privacyenabledstate.TestEnv
+	txmgr              txmgr.TxMgr
 }
 
 func (env *lockBasedEnv) getName() string {
@@ -72,7 +85,10 @@ func (env *lockBasedEnv) getName() string {
 func (env *lockBasedEnv) init(t *testing.T, testLedgerID string, btlPolicy pvtdatapolicy.BTLPolicy) {
 	var err error
 	env.t = t
-	env.testDBEnv.Init(t)
+	if env.dbInitialized == false {
+		env.testDBEnv.Init(t)
+		env.dbInitialized = true
+	}
 	env.testDB = env.testDBEnv.GetDBHandle(testLedgerID)
 	assert.NoError(t, err)
 	if btlPolicy == nil {
@@ -81,10 +97,16 @@ func (env *lockBasedEnv) init(t *testing.T, testLedgerID string, btlPolicy pvtda
 		)
 	}
 	env.testBookkeepingEnv = bookkeeping.NewTestEnv(t)
+
+	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
+	assert.NoError(t, err)
 	env.txmgr, err = NewLockBasedTxMgr(
 		testLedgerID, env.testDB, nil,
 		btlPolicy, env.testBookkeepingEnv.TestProvider,
-		&mock.DeployedChaincodeInfoProvider{})
+		&mock.DeployedChaincodeInfoProvider{},
+		nil,
+		cryptoProvider,
+	)
 	assert.NoError(t, err)
 
 }
@@ -98,9 +120,11 @@ func (env *lockBasedEnv) getVDB() privacyenabledstate.DB {
 }
 
 func (env *lockBasedEnv) cleanup() {
-	env.txmgr.Shutdown()
-	env.testDBEnv.Cleanup()
-	env.testBookkeepingEnv.Cleanup()
+	if env.dbInitialized {
+		env.txmgr.Shutdown()
+		env.testDBEnv.Cleanup()
+		env.testBookkeepingEnv.Cleanup()
+	}
 }
 
 //////////// txMgrTestHelper /////////////
@@ -119,7 +143,7 @@ func newTxMgrTestHelper(t *testing.T, txMgr txmgr.TxMgr) *txMgrTestHelper {
 func (h *txMgrTestHelper) validateAndCommitRWSet(txRWSet *rwset.TxReadWriteSet) {
 	rwSetBytes, _ := proto.Marshal(txRWSet)
 	block := h.bg.NextBlock([][]byte{rwSetBytes})
-	_, err := h.txMgr.ValidateAndPrepare(&ledger.BlockAndPvtData{Block: block, PvtData: nil}, true)
+	_, _, err := h.txMgr.ValidateAndPrepare(&ledger.BlockAndPvtData{Block: block, PvtData: nil}, true)
 	assert.NoError(h.t, err)
 	txsFltr := util.TxValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 	invalidTxNum := 0
@@ -136,7 +160,7 @@ func (h *txMgrTestHelper) validateAndCommitRWSet(txRWSet *rwset.TxReadWriteSet) 
 func (h *txMgrTestHelper) checkRWsetInvalid(txRWSet *rwset.TxReadWriteSet) {
 	rwSetBytes, _ := proto.Marshal(txRWSet)
 	block := h.bg.NextBlock([][]byte{rwSetBytes})
-	_, err := h.txMgr.ValidateAndPrepare(&ledger.BlockAndPvtData{Block: block, PvtData: nil}, true)
+	_, _, err := h.txMgr.ValidateAndPrepare(&ledger.BlockAndPvtData{Block: block, PvtData: nil}, true)
 	assert.NoError(h.t, err)
 	txsFltr := util.TxValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 	invalidTxNum := 0
@@ -149,25 +173,25 @@ func (h *txMgrTestHelper) checkRWsetInvalid(txRWSet *rwset.TxReadWriteSet) {
 }
 
 func populateCollConfigForTest(t *testing.T, txMgr *LockBasedTxMgr, nsColls []collConfigkey, ht *version.Height) {
-	m := map[string]*common.CollectionConfigPackage{}
+	m := map[string]*peer.CollectionConfigPackage{}
 	for _, nsColl := range nsColls {
 		ns, coll := nsColl.ns, nsColl.coll
 		pkg, ok := m[ns]
 		if !ok {
-			pkg = &common.CollectionConfigPackage{}
+			pkg = &peer.CollectionConfigPackage{}
 			m[ns] = pkg
 		}
-		sCollConfig := &common.CollectionConfig_StaticCollectionConfig{
-			StaticCollectionConfig: &common.StaticCollectionConfig{
+		sCollConfig := &peer.CollectionConfig_StaticCollectionConfig{
+			StaticCollectionConfig: &peer.StaticCollectionConfig{
 				Name: coll,
 			},
 		}
-		pkg.Config = append(pkg.Config, &common.CollectionConfig{Payload: sCollConfig})
+		pkg.Config = append(pkg.Config, &peer.CollectionConfig{Payload: sCollConfig})
 	}
 	ccInfoProvider := &mock.DeployedChaincodeInfoProvider{}
-	ccInfoProvider.ChaincodeInfoStub = func(channelName, ccName string, qe ledger.SimpleQueryExecutor) (*ledger.DeployedChaincodeInfo, error) {
+	ccInfoProvider.AllCollectionsConfigPkgStub = func(channelName, ccName string, qe ledger.SimpleQueryExecutor) (*peer.CollectionConfigPackage, error) {
 		fmt.Printf("retrieveing info for [%s] from [%s]\n", ccName, m)
-		return &ledger.DeployedChaincodeInfo{Name: ccName, ExplicitCollectionConfigPkg: m[ccName]}, nil
+		return m[ccName], nil
 	}
 	txMgr.ccInfoProvider = ccInfoProvider
 }

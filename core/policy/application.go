@@ -8,32 +8,64 @@ package policy
 
 import (
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/common/cauthdsl"
 	"github.com/hyperledger/fabric/common/policies"
 	"github.com/hyperledger/fabric/msp"
-	"github.com/hyperledger/fabric/protos/common"
-	"github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 )
 
-// Provider provides the backing implementation of a policy
+//go:generate mockery -dir . -name Policy -case underscore -output mocks/
+
+// Policy is the local interface that used to generate mocks for foreign interface.
+type Policy interface {
+	policies.Policy
+}
+
+//go:generate mockery -dir . -name ChannelPolicyManagerGetter -case underscore -output mocks/
+
+// ChannelPolicyManagerGetter is the local interface that used to generate mocks for foreign interface.
+type ChannelPolicyManagerGetter interface {
+	policies.ChannelPolicyManagerGetter
+}
+
+//go:generate mockery -dir . -name PolicyManager -case underscore -output mocks/
+
+// PolicyManager is the local interface that used to generate mocks for foreign interface.
+type PolicyManager interface {
+	policies.Manager
+}
+
+//go:generate mockery -dir . -name IdentityDeserializer -case underscore -output mocks/
+
+// IdentityDeserializer is the local interface that used to generate mocks for foreign interface.
+type IdentityDeserializer interface {
+	msp.IdentityDeserializer
+}
+
+//go:generate mockery -dir . -name Identity -case underscore -output mocks/
+
+// Identity is the local interface that used to generate mocks for foreign interface.
+type Identity interface {
+	msp.Identity
+}
+
+//go:generate mockery -dir . -name ChannelPolicyReferenceProvider -case underscore -output mocks/
+//go:generate mockery -dir . -name SignaturePolicyProvider -case underscore -output mocks/
+
+// SignaturePolicyProvider provides the backing implementation of a policy.
 type SignaturePolicyProvider interface {
-	// NewPolicy creates a new policy based on the policy bytes
+	// NewPolicy creates a new policy based on the policy bytes.
 	NewPolicy(signaturePolicy *common.SignaturePolicyEnvelope) (policies.Policy, error)
 }
 
-// ChannelPolicyReference is used to determine if a set of signature is valid and complies with a policy
+// ChannelPolicyReferenceProvider is used to determine if a set of signature is valid and complies with a policy.
 type ChannelPolicyReferenceProvider interface {
-	// NewPolicy creates a new policy based on the policy bytes
+	// NewPolicy creates a new policy based on the policy bytes.
 	NewPolicy(channelConfigPolicyReference string) (policies.Policy, error)
 }
-
-//go:generate mockery -dir ../../common/policies/ -name Policy -case underscore -output mocks/
-//go:generate mockery -dir ../../common/policies/ -name ChannelPolicyManagerGetter -case underscore -output mocks/
-//go:generate mockery -dir ../../common/policies/ -name Manager -case underscore -output mocks/
-//go:generate mockery -dir . -name ChannelPolicyReferenceProvider -case underscore -output mocks/
-//go:generate mockery -dir . -name SignaturePolicyProvider -case underscore -output mocks/
 
 type ApplicationPolicyEvaluator struct {
 	signaturePolicyProvider        SignaturePolicyProvider
@@ -67,8 +99,8 @@ type dynamicPolicyManager struct {
 }
 
 func (d *dynamicPolicyManager) GetPolicy(id string) (policies.Policy, bool) {
-	mgr, ok := d.channelPolicyManagerGetter.Manager(d.channelID)
-	if !ok {
+	mgr := d.channelPolicyManagerGetter.Manager(d.channelID)
+	if mgr == nil {
 		// this will never happen - if we are here we
 		// managed to retrieve the policy manager for
 		// this channel once, and so by the way the
@@ -81,13 +113,13 @@ func (d *dynamicPolicyManager) GetPolicy(id string) (policies.Policy, bool) {
 
 // New returns an evaluator for application policies
 func New(deserializer msp.IdentityDeserializer, channel string, channelPolicyManagerGetter policies.ChannelPolicyManagerGetter) (*ApplicationPolicyEvaluator, error) {
-	_, ok := channelPolicyManagerGetter.Manager(channel)
-	if !ok {
+	mgr := channelPolicyManagerGetter.Manager(channel)
+	if mgr == nil {
 		return nil, errors.Errorf("failed to retrieve policy manager for channel %s", channel)
 	}
 
 	return &ApplicationPolicyEvaluator{
-		signaturePolicyProvider: &cauthdsl.ProviderFromStruct{Deserializer: deserializer},
+		signaturePolicyProvider: &cauthdsl.EnvelopeBasedPolicyProvider{Deserializer: deserializer},
 		channelPolicyReferenceProvider: &ChannelPolicyReferenceProviderImpl{Manager: &dynamicPolicyManager{
 			channelID:                  channel,
 			channelPolicyManagerGetter: channelPolicyManagerGetter,
@@ -101,7 +133,7 @@ func (a *ApplicationPolicyEvaluator) evaluateSignaturePolicy(signaturePolicy *co
 		return errors.WithMessage(err, "could not create evaluator for signature policy")
 	}
 
-	return p.Evaluate(signatureSet)
+	return p.EvaluateSignedData(signatureSet)
 }
 
 func (a *ApplicationPolicyEvaluator) evaluateChannelConfigPolicyReference(channelConfigPolicyReference string, signatureSet []*protoutil.SignedData) error {
@@ -110,7 +142,7 @@ func (a *ApplicationPolicyEvaluator) evaluateChannelConfigPolicyReference(channe
 		return errors.WithMessage(err, "could not create evaluator for channel reference policy")
 	}
 
-	return p.Evaluate(signatureSet)
+	return p.EvaluateSignedData(signatureSet)
 }
 
 func (a *ApplicationPolicyEvaluator) Evaluate(policyBytes []byte, signatureSet []*protoutil.SignedData) error {

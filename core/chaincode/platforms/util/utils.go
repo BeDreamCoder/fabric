@@ -16,7 +16,6 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/metadata"
-	"github.com/hyperledger/fabric/core/config"
 	"github.com/spf13/viper"
 )
 
@@ -24,8 +23,8 @@ var logger = flogging.MustGetLogger("chaincode.platform.util")
 
 type DockerBuildOptions struct {
 	Image        string
-	Env          []string
 	Cmd          string
+	Env          []string
 	InputStream  io.Reader
 	OutputStream io.Writer
 }
@@ -48,31 +47,14 @@ type DockerBuildOptions struct {
 //
 // The input parameters are fairly simple:
 //      - Image:        (optional) The builder image to use or "chaincode.builder"
-//      - Env:          (optional) environment variables for the build environment.
 //      - Cmd:          The command to execute inside the container.
 //      - InputStream:  A tarball of files that will be expanded into /chaincode/input.
 //      - OutputStream: A tarball of files that will be gathered from /chaincode/output
 //                      after successful execution of Cmd.
 //-------------------------------------------------------------------------------------------
-func DockerBuild(opts DockerBuildOptions) error {
-	var client *docker.Client
-	var err error
-	endpoint := viper.GetString("vm.endpoint")
-	tlsEnabled := viper.GetBool("vm.docker.tls.enabled")
-	if tlsEnabled {
-		cert := config.GetPath("vm.docker.tls.cert.file")
-		key := config.GetPath("vm.docker.tls.key.file")
-		ca := config.GetPath("vm.docker.tls.ca.file")
-		client, err = docker.NewTLSClient(endpoint, cert, key, ca)
-	} else {
-		client, err = docker.NewClient(endpoint)
-	}
-
-	if err != nil {
-		return fmt.Errorf("Error creating docker client: %s", err)
-	}
+func DockerBuild(opts DockerBuildOptions, client *docker.Client) error {
 	if opts.Image == "" {
-		opts.Image = GetDockerfileFromConfig("chaincode.builder")
+		opts.Image = GetDockerImageFromConfig("chaincode.builder")
 		if opts.Image == "" {
 			return fmt.Errorf("No image provided and \"chaincode.builder\" default does not exist")
 		}
@@ -83,7 +65,7 @@ func DockerBuild(opts DockerBuildOptions) error {
 	//-----------------------------------------------------------------------------------
 	// Ensure the image exists locally, or pull it from a registry if it doesn't
 	//-----------------------------------------------------------------------------------
-	_, err = client.InspectImage(opts.Image)
+	_, err := client.InspectImage(opts.Image)
 	if err != nil {
 		logger.Debugf("Image %s does not exist locally, attempt pull", opts.Image)
 
@@ -94,13 +76,13 @@ func DockerBuild(opts DockerBuildOptions) error {
 	}
 
 	//-----------------------------------------------------------------------------------
-	// Create an ephemeral container, armed with our Env/Cmd
+	// Create an ephemeral container, armed with our Image/Cmd
 	//-----------------------------------------------------------------------------------
 	container, err := client.CreateContainer(docker.CreateContainerOptions{
 		Config: &docker.Config{
 			Image:        opts.Image,
-			Env:          opts.Env,
 			Cmd:          []string{"/bin/sh", "-c", opts.Cmd},
+			Env:          opts.Env,
 			AttachStdout: true,
 			AttachStderr: true,
 		},
@@ -182,7 +164,7 @@ func DockerBuild(opts DockerBuildOptions) error {
 	return nil
 }
 
-func GetDockerfileFromConfig(path string) string {
+func GetDockerImageFromConfig(path string) string {
 	r := strings.NewReplacer(
 		"$(ARCH)", runtime.GOARCH,
 		"$(PROJECT_VERSION)", metadata.Version,

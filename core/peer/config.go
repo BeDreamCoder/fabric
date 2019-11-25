@@ -25,46 +25,182 @@ import (
 	"io/ioutil"
 	"net"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/hyperledger/fabric/core/comm"
 	"github.com/hyperledger/fabric/core/config"
-	pb "github.com/hyperledger/fabric/protos/peer"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 )
 
-type Config struct {
-	//Peer config
-	LocalMspID                            string
-	ListenAddress                         string
-	AuthenticationTimeWindow              time.Duration
-	PeerTLSEnabled                        bool
-	PeerID                                string
-	PeerAddress                           string
-	PeerEndpoint                          *pb.PeerEndpoint
-	NetworkID                             string
-	LimitsConcurrencyQSCC                 int
-	DiscoveryEnabled                      bool
-	ProfileEnabled                        bool
-	ProfileListenAddress                  string
-	DiscoveryOrgMembersAllowed            bool
-	DiscoveryAuthCacheEnabled             bool
-	DiscoveryAuthCacheMaxSize             int
-	DiscoveryAuthCachePurgeRetentionRatio float64
-	ChaincodeListenAddr                   string
-	ChaincodeAddr                         string
-	AdminListenAddr                       string
-
-	//VM config
-	VMEndpoint           string
-	VMDockerTLSEnabled   bool
-	VMDockerAttachStdout bool
-
-	//Chaincode config
-	ChaincodePull bool
+// ExternalBuilder represents the configuration structure of
+// a chaincode external builder
+type ExternalBuilder struct {
+	EnvironmentWhitelist []string `yaml:"environmentWhitelist"`
+	Name                 string   `yaml:"name"`
+	Path                 string   `yaml:"path"`
 }
 
+// Config is the struct that defines the Peer configurations.
+type Config struct {
+	// LocalMSPID is the identifier of the local MSP.
+	LocalMSPID string
+	// ListenAddress is the local address the peer will listen on. It must be
+	// formatted as [host | ipaddr]:port.
+	ListenAddress string
+	// PeerID provides a name for this peer instance. It is used when naming
+	// docker resources to segregate fabric networks and peers.
+	PeerID string
+	// PeerAddress is the address other peers and clients should use to
+	// communicate with the peer. It must be formatted as [host | ipaddr]:port.
+	// When used by the CLI, it represents the target peer endpoint.
+	PeerAddress string
+	// NetworkID specifies a name to use for logical separation of networks. It
+	// is used when naming docker resources to segregate fabric networks and
+	// peers.
+	NetworkID string
+	// ChaincodeListenAddress is the endpoint on which this peer will listen for
+	// chaincode connections. If omitted, it defaults to the host portion of
+	// PeerAddress and port 7052.
+	ChaincodeListenAddress string
+	// ChaincodeAddress specifies the endpoint chaincode launched by the peer
+	// should use to connect to the peer. If omitted, it defaults to
+	// ChaincodeListenAddress and falls back to ListenAddress.
+	ChaincodeAddress string
+	// ValidatorPoolSize indicates the number of goroutines that will execute
+	// transaction validation in parallel. If omitted, it defaults to number of
+	// hardware threads on the machine.
+	ValidatorPoolSize int
+
+	// ----- Peer Delivery Client Keepalive -----
+	// DeliveryClient Keepalive settings for communication with ordering nodes.
+	DeliverClientKeepaliveOptions comm.KeepaliveOptions
+
+	// ----- Profile -----
+	// TODO: create separate sub-struct for Profile config.
+
+	// ProfileEnabled determines if the go pprof endpoint is enabled in the peer.
+	ProfileEnabled bool
+	// ProfileListenAddress is the address the pprof server should accept
+	// connections on.
+	ProfileListenAddress string
+
+	// ----- Discovery -----
+
+	// The discovery service is used by clients to query information about peers,
+	// such as - which peers have joined a certain channel, what is the latest
+	// channel config, and most importantly - given a chaincode and a channel, what
+	// possible sets of peers satisfy the endorsement policy.
+	// TODO: create separate sub-struct for Discovery config.
+
+	// DiscoveryEnabled is used to enable the discovery service.
+	DiscoveryEnabled bool
+	// DiscoveryOrgMembersAllowed allows non-admins to perform non channel-scoped queries.
+	DiscoveryOrgMembersAllowed bool
+	// DiscoveryAuthCacheEnabled is used to enable the authentication cache.
+	DiscoveryAuthCacheEnabled bool
+	// DiscoveryAuthCacheMaxSize sets the maximum size of authentication cache.
+	DiscoveryAuthCacheMaxSize int
+	// DiscoveryAuthCachePurgeRetentionRatio set the proportion of entries remains in cache
+	// after overpopulation purge.
+	DiscoveryAuthCachePurgeRetentionRatio float64
+
+	// ----- Limits -----
+	// Limits is used to configure some internal resource limits.
+	// TODO: create separate sub-struct for Limits config.
+
+	// LimitsConcurrencyQSCC sets the limits for number of concurrently running
+	// qscc system chaincode requests.
+	LimitsConcurrencyQSCC int
+
+	// ----- TLS -----
+	// Require server-side TLS.
+	// TODO: create separate sub-struct for PeerTLS config.
+
+	// PeerTLSEnabled enables/disables Peer TLS.
+	PeerTLSEnabled bool
+
+	// ----- Authentication -----
+	// Authentication contains configuration parameters related to authenticating
+	// client messages.
+	// TODO: create separate sub-struct for Authentication config.
+
+	// AuthenticationTimeWindow sets the acceptable time duration for current
+	// server time and client's time as specified in a client request message.
+	AuthenticationTimeWindow time.Duration
+
+	// Endpoint of the vm management system. For docker can be one of the following in general
+	// unix:///var/run/docker.sock
+	// http://localhost:2375
+	// https://localhost:2376
+	VMEndpoint string
+
+	// ----- vm.docker.tls -----
+	// TODO: create separate sub-struct for VM.Docker.TLS config.
+
+	// VMDockerTLSEnabled enables/disables TLS for dockers.
+	VMDockerTLSEnabled   bool
+	VMDockerAttachStdout bool
+	// VMNetworkMode sets the networking mode for the container.
+	VMNetworkMode string
+
+	// ChaincodePull enables/disables force pulling of the base docker image.
+	ChaincodePull bool
+	// ExternalBuilders represents the builders and launchers for
+	// chaincode. The external builder detection processing will iterate over the
+	// builders in the order specified below.
+	ExternalBuilders []ExternalBuilder
+
+	// ----- Operations config -----
+	// TODO: create separate sub-struct for Operations config.
+
+	// OperationsListenAddress provides the host and port for the operations server
+	OperationsListenAddress string
+	// OperationsTLSEnabled enables/disables TLS for operations.
+	OperationsTLSEnabled bool
+	// OperationsTLSCertFile provides the path to PEM encoded server certificate for
+	// the operations server.
+	OperationsTLSCertFile string
+	// OperationsTLSKeyFile provides the path to PEM encoded server key for the
+	// operations server.
+	OperationsTLSKeyFile string
+	// OperationsTLSClientAuthRequired enables/disables the requirements for client
+	// certificate authentication at the TLS layer to access all resource.
+	OperationsTLSClientAuthRequired bool
+	// OperationsTLSClientRootCAs provides the path to PEM encoded ca certiricates to
+	// trust for client authentication.
+	OperationsTLSClientRootCAs []string
+
+	// ----- Metrics config -----
+	// TODO: create separate sub-struct for Metrics config.
+
+	// MetricsProvider provides the categories of metrics providers, which is one of
+	// statsd, prometheus, or disabled.
+	MetricsProvider string
+	// StatsdNetwork indicate the network type used by statsd metrics. (tcp or udp).
+	StatsdNetwork string
+	// StatsdAaddress provides the address for statsd server.
+	StatsdAaddress string
+	// StatsdWriteInterval set the time interval at which locally cached counters and
+	// gauges are pushed.
+	StatsdWriteInterval time.Duration
+	// StatsdPrefix provides the prefix that prepended to all emitted statsd metrics.
+	StatsdPrefix string
+
+	// ----- Docker config ------
+
+	// DockerCert is the path to the PEM encoded TLS client certificate required to access
+	// the docker daemon.
+	DockerCert string
+	// DockerKey is the path to the PEM encoded key required to access the docker daemon.
+	DockerKey string
+	// DockerCA is the path to the PEM encoded CA certificate for the docker daemon.
+	DockerCA string
+}
+
+// GlobalConfig obtains a set of configuration from viper, build and returns
+// the config struct.
 func GlobalConfig() (*Config, error) {
 	c := &Config{}
 	if err := c.load(); err != nil {
@@ -78,17 +214,21 @@ func (c *Config) load() error {
 	if err != nil {
 		return err
 	}
+
+	configDir := filepath.Dir(viper.ConfigFileUsed())
+
 	c.PeerAddress = preeAddress
 	c.PeerID = viper.GetString("peer.id")
-	c.PeerEndpoint = &pb.PeerEndpoint{
-		Id: &pb.PeerID{
-			Name: c.PeerID,
-		},
-		Address: c.PeerAddress,
-	}
-	c.LocalMspID = viper.GetString("peer.localMspId")
+	c.LocalMSPID = viper.GetString("peer.localMspId")
 	c.ListenAddress = viper.GetString("peer.listenAddress")
+
 	c.AuthenticationTimeWindow = viper.GetDuration("peer.authentication.timewindow")
+	if c.AuthenticationTimeWindow == 0 {
+		defaultTimeWindow := 15 * time.Minute
+		logger.Warningf("`peer.authentication.timewindow` not set; defaulting to %s", defaultTimeWindow)
+		c.AuthenticationTimeWindow = defaultTimeWindow
+	}
+
 	c.PeerTLSEnabled = viper.GetBool("peer.tls.enabled")
 	c.NetworkID = viper.GetString("peer.networkId")
 	c.LimitsConcurrencyQSCC = viper.GetInt("peer.limits.concurrency.qscc")
@@ -99,15 +239,66 @@ func (c *Config) load() error {
 	c.DiscoveryAuthCacheEnabled = viper.GetBool("peer.discovery.authCacheEnabled")
 	c.DiscoveryAuthCacheMaxSize = viper.GetInt("peer.discovery.authCacheMaxSize")
 	c.DiscoveryAuthCachePurgeRetentionRatio = viper.GetFloat64("peer.discovery.authCachePurgeRetentionRatio")
-	c.ChaincodeListenAddr = viper.GetString("peer.chaincodeListenAddress")
-	c.ChaincodeAddr = viper.GetString("peer.chaincodeAddress")
-	c.AdminListenAddr = viper.GetString("peer.adminService.listenAddress")
+	c.ChaincodeListenAddress = viper.GetString("peer.chaincodeListenAddress")
+	c.ChaincodeAddress = viper.GetString("peer.chaincodeAddress")
+
+	c.ValidatorPoolSize = viper.GetInt("peer.validatorPoolSize")
+	if c.ValidatorPoolSize <= 0 {
+		c.ValidatorPoolSize = runtime.NumCPU()
+	}
+
+	c.DeliverClientKeepaliveOptions = comm.DefaultKeepaliveOptions
+	if viper.IsSet("peer.keepalive.deliveryClient.interval") {
+		c.DeliverClientKeepaliveOptions.ClientInterval = viper.GetDuration("peer.keepalive.deliveryClient.interval")
+	}
+	if viper.IsSet("peer.keepalive.deliveryClient.timeout") {
+		c.DeliverClientKeepaliveOptions.ClientTimeout = viper.GetDuration("peer.keepalive.deliveryClient.timeout")
+	}
 
 	c.VMEndpoint = viper.GetString("vm.endpoint")
 	c.VMDockerTLSEnabled = viper.GetBool("vm.docker.tls.enabled")
 	c.VMDockerAttachStdout = viper.GetBool("vm.docker.attachStdout")
 
+	c.VMNetworkMode = viper.GetString("vm.docker.hostConfig.NetworkMode")
+	if c.VMNetworkMode == "" {
+		c.VMNetworkMode = "host"
+	}
+
 	c.ChaincodePull = viper.GetBool("chaincode.pull")
+	var externalBuilders []ExternalBuilder
+	err = viper.UnmarshalKey("chaincode.externalBuilders", &externalBuilders)
+	if err != nil {
+		return err
+	}
+	for _, builder := range externalBuilders {
+		if builder.Path == "" {
+			return fmt.Errorf("invalid external builder configuration, path attribute missing in one or more builders")
+		}
+		if builder.Name == "" {
+			return fmt.Errorf("external builder at path %s has no name attribute", builder.Path)
+		}
+	}
+	c.ExternalBuilders = externalBuilders
+
+	c.OperationsListenAddress = viper.GetString("operations.listenAddress")
+	c.OperationsTLSEnabled = viper.GetBool("operations.tls.enabled")
+	c.OperationsTLSCertFile = config.GetPath("operations.tls.cert.file")
+	c.OperationsTLSKeyFile = config.GetPath("operations.tls.key.file")
+	c.OperationsTLSClientAuthRequired = viper.GetBool("operations.tls.clientAuthRequired")
+
+	for _, rca := range viper.GetStringSlice("operations.tls.clientRootCAs.files") {
+		c.OperationsTLSClientRootCAs = append(c.OperationsTLSClientRootCAs, config.TranslatePath(configDir, rca))
+	}
+
+	c.MetricsProvider = viper.GetString("metrics.provider")
+	c.StatsdNetwork = viper.GetString("metrics.statsd.network")
+	c.StatsdAaddress = viper.GetString("metrics.statsd.address")
+	c.StatsdWriteInterval = viper.GetDuration("metrics.statsd.writeInterval")
+	c.StatsdPrefix = viper.GetString("metrics.statsd.prefix")
+
+	c.DockerCert = config.GetPath("vm.docker.tls.cert.file")
+	c.DockerKey = config.GetPath("vm.docker.tls.key.file")
+	c.DockerCA = config.GetPath("vm.docker.tls.ca.file")
 
 	return nil
 }
@@ -123,9 +314,9 @@ func getLocalAddress() (string, error) {
 		return "", errors.Errorf("peer.address isn't in host:port format: %s", peerAddress)
 	}
 
-	localIP, err := GetLocalIP()
+	localIP, err := comm.GetLocalIP()
 	if err != nil {
-		peerLogger.Errorf("Local ip address not auto-detectable: %s", err)
+		peerLogger.Errorf("local IP address not auto-detectable: %s", err)
 		return "", err
 	}
 	autoDetectedIPAndPort := net.JoinHostPort(localIP, port)
@@ -148,11 +339,13 @@ func getLocalAddress() (string, error) {
 
 // GetServerConfig returns the gRPC server configuration for the peer
 func GetServerConfig() (comm.ServerConfig, error) {
-	secureOptions := &comm.SecureOptions{
-		UseTLS: viper.GetBool("peer.tls.enabled"),
+	serverConfig := comm.ServerConfig{
+		ConnectionTimeout: viper.GetDuration("peer.connectiontimeout"),
+		SecOpts: comm.SecureOptions{
+			UseTLS: viper.GetBool("peer.tls.enabled"),
+		},
 	}
-	serverConfig := comm.ServerConfig{SecOpts: secureOptions}
-	if secureOptions.UseTLS {
+	if serverConfig.SecOpts.UseTLS {
 		// get the certs from the file system
 		serverKey, err := ioutil.ReadFile(config.GetPath("peer.tls.key.file"))
 		if err != nil {
@@ -162,10 +355,10 @@ func GetServerConfig() (comm.ServerConfig, error) {
 		if err != nil {
 			return serverConfig, fmt.Errorf("error loading TLS certificate (%s)", err)
 		}
-		secureOptions.Certificate = serverCert
-		secureOptions.Key = serverKey
-		secureOptions.RequireClientCert = viper.GetBool("peer.tls.clientAuthRequired")
-		if secureOptions.RequireClientCert {
+		serverConfig.SecOpts.Certificate = serverCert
+		serverConfig.SecOpts.Key = serverKey
+		serverConfig.SecOpts.RequireClientCert = viper.GetBool("peer.tls.clientAuthRequired")
+		if serverConfig.SecOpts.RequireClientCert {
 			var clientRoots [][]byte
 			for _, file := range viper.GetStringSlice("peer.tls.clientRootCAs.files") {
 				clientRoot, err := ioutil.ReadFile(
@@ -176,7 +369,7 @@ func GetServerConfig() (comm.ServerConfig, error) {
 				}
 				clientRoots = append(clientRoots, clientRoot)
 			}
-			secureOptions.ClientRootCAs = clientRoots
+			serverConfig.SecOpts.ClientRootCAs = clientRoots
 		}
 		// check for root cert
 		if config.GetPath("peer.tls.rootcert.file") != "" {
@@ -184,7 +377,7 @@ func GetServerConfig() (comm.ServerConfig, error) {
 			if err != nil {
 				return serverConfig, fmt.Errorf("error loading TLS root certificate (%s)", err)
 			}
-			secureOptions.ServerRootCAs = [][]byte{rootCert}
+			serverConfig.SecOpts.ServerRootCAs = [][]byte{rootCert}
 		}
 	}
 	// get the default keepalive options

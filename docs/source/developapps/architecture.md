@@ -14,7 +14,7 @@ applications of PaperNet.
 
 As we've seen, there are two important concepts that concern us when dealing
 with commercial paper; **states** and **transactions**. Indeed, this is true for
-*all* blockchain use cases; there are conceptual objects of value, modelled as
+*all* blockchain use cases; there are conceptual objects of value, modeled as
 states, whose lifecycle transitions are described by transactions. An effective
 analysis of states and transactions is an essential starting point for a
 successful implementation.
@@ -28,7 +28,7 @@ diagram for commercial paper. Commercial papers transition between **issued**,
 **redeem** transactions.*
 
 See how the state diagram describes how commercial papers change over time, and
-how specific transactions govern the life cycle transitions. In Hypledger
+how specific transactions govern the life cycle transitions. In Hyperledger
 Fabric, smart contracts implement transaction logic that transition commercial
 papers between their different states. Commercial paper states are actually held
 in the ledger world state; so let's take a closer look at them.
@@ -102,6 +102,8 @@ that creates the state. This unique key is usually with some form of
 although less readable, is a standard practice. What's important is that every
 individual state object in a ledger must have a unique key.
 
+_Note: You should avoid using U+0000 (nil byte) in keys._
+
 ## Multiple states
 
 As we've seen, commercial papers in PaperNet are stored as state vectors in a
@@ -153,7 +155,7 @@ unique **composite** key formed by the concatenation of `org.papernet.paper`,
 
 
   * Hyperlegder Fabric internally uses a concurrency control
-    [mechanism](../arch-deep-dive.html#the-endorsing-peer-simulates-a-transaction-and-produces-an-endorsement-signature)
+    mechanism <!-- Add more information to explain this topic-->
     to update a ledger, such that keeping papers in separate state vectors vastly
     reduces the opportunity for shared-state collisions. Such collisions require
     transaction re-submission, complicate application design, and decrease

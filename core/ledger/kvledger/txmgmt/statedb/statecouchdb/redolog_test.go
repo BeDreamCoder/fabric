@@ -14,7 +14,6 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version"
-	"github.com/hyperledger/fabric/core/ledger/ledgerconfig"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -151,9 +150,12 @@ func TestCouchdbRedoLogger(t *testing.T) {
 }
 
 func redologTestSetup(t *testing.T) (p *redoLoggerProvider, cleanup func()) {
-	dbPath := ledgerconfig.GetCouchdbRedologsPath()
-	assert.NoError(t, os.RemoveAll(dbPath))
-	p = newRedoLoggerProvider(dbPath)
+	dbPath, err := ioutil.TempDir("", "redolog")
+	if err != nil {
+		t.Fatalf("Failed to create redo log directory: %s", err)
+	}
+	p, err = newRedoLoggerProvider(dbPath)
+	assert.NoError(t, err)
 	cleanup = func() {
 		p.close()
 		assert.NoError(t, os.RemoveAll(dbPath))

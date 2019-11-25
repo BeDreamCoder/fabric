@@ -13,13 +13,13 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto"
+	cb "github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/msp"
+	pb "github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/common/tools/protolator"
-	"github.com/hyperledger/fabric/internal/configtxgen/configtxgentest"
+	"github.com/hyperledger/fabric/core/config/configtest"
 	"github.com/hyperledger/fabric/internal/configtxgen/encoder"
-	genesisconfig "github.com/hyperledger/fabric/internal/configtxgen/localconfig"
-	cb "github.com/hyperledger/fabric/protos/common"
-	"github.com/hyperledger/fabric/protos/msp"
-	pb "github.com/hyperledger/fabric/protos/peer"
+	"github.com/hyperledger/fabric/internal/configtxgen/genesisconfig"
 	"github.com/hyperledger/fabric/protoutil"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
@@ -45,13 +45,13 @@ func bidirectionalMarshal(t *testing.T, doc proto.Message) {
 
 	var remarshaled bytes.Buffer
 	assert.NoError(t, protolator.DeepMarshalJSON(&remarshaled, newRoot))
-	assert.Equal(t, string(buffer.Bytes()), string(remarshaled.Bytes()))
-	//t.Log(string(buffer.Bytes()))
-	//t.Log(string(remarshaled.Bytes()))
+	assert.Equal(t, buffer.String(), remarshaled.String())
+	//t.Log(buffer.String())
+	//t.Log(remarshaled.String())
 }
 
 func TestConfigUpdate(t *testing.T) {
-	cg, err := encoder.NewChannelGroup(configtxgentest.Load(genesisconfig.SampleSingleMSPSoloProfile))
+	cg, err := encoder.NewChannelGroup(genesisconfig.Load(genesisconfig.SampleSingleMSPSoloProfile, configtest.GetDevConfigDir()))
 	assert.NoError(t, err)
 
 	bidirectionalMarshal(t, &cb.ConfigUpdateEnvelope{
@@ -72,7 +72,7 @@ func TestIdemix(t *testing.T) {
 }
 
 func TestGenesisBlock(t *testing.T) {
-	p := encoder.New(configtxgentest.Load(genesisconfig.SampleSingleMSPSoloProfile))
+	p := encoder.New(genesisconfig.Load(genesisconfig.SampleSingleMSPSoloProfile, configtest.GetDevConfigDir()))
 	gb := p.GenesisBlockForChannel("foo")
 
 	bidirectionalMarshal(t, gb)
@@ -236,8 +236,10 @@ func TestChannelCreationPolicy(t *testing.T) {
 
 func TestStaticMarshal(t *testing.T) {
 	// To generate artifacts:
-	// 	configtxgen -channelID test -outputBlock block.pb -profile SampleSingleMSPSolo
-	// 	configtxgen -inspectBlock block.pb > block.json
+	// e.g.
+	//  FABRICPATH=$GOPATH/src/github.com/hyperledger/fabric
+	// 	configtxgen -channelID test -outputBlock block.pb -profile SampleSingleMSPSolo -configPath FABRICPATH/sampleconfig
+	// 	configtxgen -configPath FABRICPATH/sampleconfig -inspectBlock block.pb > block.json
 
 	blockBin, err := ioutil.ReadFile("testdata/block.pb")
 	require.NoError(t, err)

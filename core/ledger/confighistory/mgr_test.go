@@ -8,16 +8,19 @@ package confighistory
 
 import (
 	"fmt"
+	"io/ioutil"
 	"math"
 	"os"
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/mock"
-	"github.com/hyperledger/fabric/protos/common"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
@@ -26,13 +29,45 @@ func TestMain(m *testing.M) {
 }
 
 func TestWithNoCollectionConfig(t *testing.T) {
-	dbPath := "/tmp/fabric/core/ledger/confighistory"
+	dbPath, err := ioutil.TempDir("", "confighistory")
+	if err != nil {
+		t.Fatalf("Failed to create config history directory: %s", err)
+	}
+	defer os.RemoveAll(dbPath)
 	mockCCInfoProvider := &mock.DeployedChaincodeInfoProvider{}
-	env := newTestEnv(t, dbPath, mockCCInfoProvider)
-	mgr := env.mgr
-	defer env.cleanup()
+	mgr, err := NewMgr(dbPath, mockCCInfoProvider)
+	assert.NoError(t, err)
 	testutilEquipMockCCInfoProviderToReturnDesiredCollConfig(mockCCInfoProvider, "chaincode1", nil)
-	err := mgr.HandleStateUpdates(&ledger.StateUpdateTrigger{
+	err = mgr.HandleStateUpdates(&ledger.StateUpdateTrigger{
+		LedgerID:           "ledger1",
+		CommittingBlockNum: 50},
+	)
+	assert.NoError(t, err)
+	dummyLedgerInfoRetriever := &dummyLedgerInfoRetriever{
+		info: &common.BlockchainInfo{Height: 100},
+		qe:   &mock.QueryExecutor{},
+	}
+	retriever := mgr.GetRetriever("ledger1", dummyLedgerInfoRetriever)
+	collConfig, err := retriever.MostRecentCollectionConfigBelow(90, "chaincode1")
+	assert.NoError(t, err)
+	assert.Nil(t, collConfig)
+}
+
+func TestWithEmptyCollectionConfig(t *testing.T) {
+	dbPath, err := ioutil.TempDir("", "confighistory")
+	if err != nil {
+		t.Fatalf("Failed to create config history directory: %s", err)
+	}
+	defer os.RemoveAll(dbPath)
+	mockCCInfoProvider := &mock.DeployedChaincodeInfoProvider{}
+	mgr, err := NewMgr(dbPath, mockCCInfoProvider)
+	assert.NoError(t, err)
+	testutilEquipMockCCInfoProviderToReturnDesiredCollConfig(
+		mockCCInfoProvider,
+		"chaincode1",
+		&peer.CollectionConfigPackage{},
+	)
+	err = mgr.HandleStateUpdates(&ledger.StateUpdateTrigger{
 		LedgerID:           "ledger1",
 		CommittingBlockNum: 50},
 	)
@@ -48,11 +83,14 @@ func TestWithNoCollectionConfig(t *testing.T) {
 }
 
 func TestMgr(t *testing.T) {
-	dbPath := "/tmp/fabric/core/ledger/confighistory"
+	dbPath, err := ioutil.TempDir("", "confighistory")
+	if err != nil {
+		t.Fatalf("Failed to create config history directory: %s", err)
+	}
+	defer os.RemoveAll(dbPath)
 	mockCCInfoProvider := &mock.DeployedChaincodeInfoProvider{}
-	env := newTestEnv(t, dbPath, mockCCInfoProvider)
-	mgr := env.mgr
-	defer env.cleanup()
+	mgr, err := NewMgr(dbPath, mockCCInfoProvider)
+	assert.NoError(t, err)
 	chaincodeName := "chaincode1"
 	maxBlockNumberInLedger := uint64(2000)
 	dummyLedgerInfoRetriever := &dummyLedgerInfoRetriever{
@@ -123,11 +161,15 @@ func TestMgr(t *testing.T) {
 }
 
 func TestWithImplicitColls(t *testing.T) {
-	dbPath := "/tmp/fabric/core/ledger/confighistory"
+	dbPath, err := ioutil.TempDir("", "confighistory")
+	if err != nil {
+		t.Fatalf("Failed to create config history directory: %s", err)
+	}
+	defer os.RemoveAll(dbPath)
 	collConfigPackage := testutilCreateCollConfigPkg([]string{"Explicit-coll-1", "Explicit-coll-2"})
 	mockCCInfoProvider := &mock.DeployedChaincodeInfoProvider{}
 	mockCCInfoProvider.ImplicitCollectionsReturns(
-		[]*common.StaticCollectionConfig{
+		[]*peer.StaticCollectionConfig{
 			{
 				Name: "Implicit-coll-1",
 			},
@@ -137,13 +179,17 @@ func TestWithImplicitColls(t *testing.T) {
 		},
 		nil,
 	)
-	env := newTestEnv(t, dbPath, mockCCInfoProvider)
-	defer env.cleanup()
-	mgr := env.mgr
+	p, err := newDBProvider(dbPath)
+	require.NoError(t, err)
+
+	mgr := &mgr{
+		ccInfoProvider: mockCCInfoProvider,
+		dbProvider:     p,
+	}
 
 	// add explicit collections at height 20
 	batch, err := prepareDBBatch(
-		map[string]*common.CollectionConfigPackage{
+		map[string]*peer.CollectionConfigPackage{
 			"chaincode1": collConfigPackage,
 		},
 		20,
@@ -211,25 +257,7 @@ func TestWithImplicitColls(t *testing.T) {
 
 }
 
-type testEnv struct {
-	dbPath string
-	mgr    *mgr
-	t      *testing.T
-}
-
-func newTestEnv(t *testing.T, dbPath string, ccInfoProvider ledger.DeployedChaincodeInfoProvider) *testEnv {
-	env := &testEnv{dbPath: dbPath, t: t}
-	env.cleanup()
-	env.mgr = newMgr(ccInfoProvider, dbPath).(*mgr)
-	return env
-}
-
-func (env *testEnv) cleanup() {
-	err := os.RemoveAll(env.dbPath)
-	assert.NoError(env.t, err)
-}
-
-func sampleCollectionConfigPackage(collNamePart1 string, collNamePart2 uint64) *common.CollectionConfigPackage {
+func sampleCollectionConfigPackage(collNamePart1 string, collNamePart2 uint64) *peer.CollectionConfigPackage {
 	collName := fmt.Sprintf("%s-%d", collNamePart1, collNamePart2)
 	return testutilCreateCollConfigPkg([]string{collName})
 }
@@ -237,7 +265,7 @@ func sampleCollectionConfigPackage(collNamePart1 string, collNamePart2 uint64) *
 func testutilEquipMockCCInfoProviderToReturnDesiredCollConfig(
 	mockCCInfoProvider *mock.DeployedChaincodeInfoProvider,
 	chaincodeName string,
-	collConfigPackage *common.CollectionConfigPackage) {
+	collConfigPackage *peer.CollectionConfigPackage) {
 	mockCCInfoProvider.UpdatedChaincodesReturns(
 		[]*ledger.ChaincodeLifecycleInfo{
 			{Name: chaincodeName},
@@ -250,15 +278,15 @@ func testutilEquipMockCCInfoProviderToReturnDesiredCollConfig(
 	)
 }
 
-func testutilCreateCollConfigPkg(collNames []string) *common.CollectionConfigPackage {
-	pkg := &common.CollectionConfigPackage{
-		Config: []*common.CollectionConfig{},
+func testutilCreateCollConfigPkg(collNames []string) *peer.CollectionConfigPackage {
+	pkg := &peer.CollectionConfigPackage{
+		Config: []*peer.CollectionConfig{},
 	}
 	for _, collName := range collNames {
 		pkg.Config = append(pkg.Config,
-			&common.CollectionConfig{
-				Payload: &common.CollectionConfig_StaticCollectionConfig{
-					StaticCollectionConfig: &common.StaticCollectionConfig{
+			&peer.CollectionConfig{
+				Payload: &peer.CollectionConfig_StaticCollectionConfig{
+					StaticCollectionConfig: &peer.StaticCollectionConfig{
 						Name: collName,
 					},
 				},

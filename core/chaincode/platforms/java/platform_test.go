@@ -17,10 +17,10 @@ import (
 	"testing"
 	"time"
 
+	pb "github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/core/chaincode/platforms/java"
 	"github.com/hyperledger/fabric/core/chaincode/platforms/util"
 	"github.com/hyperledger/fabric/core/config/configtest"
-	pb "github.com/hyperledger/fabric/protos/peer"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -151,7 +151,7 @@ func TestGenerateDockerfile(t *testing.T) {
 
 	var buf []string
 
-	buf = append(buf, "FROM "+util.GetDockerfileFromConfig("chaincode.java.runtime"))
+	buf = append(buf, "FROM "+util.GetDockerImageFromConfig("chaincode.java.runtime"))
 	buf = append(buf, "ADD binpackage.tar /root/chaincode-java/chaincode")
 
 	dockerFileContents := strings.Join(buf, "\n")
@@ -159,26 +159,17 @@ func TestGenerateDockerfile(t *testing.T) {
 	assert.Equal(t, dockerFileContents, dockerfile)
 }
 
-func TestGenerateDockerBuild(t *testing.T) {
-	t.Skip()
+func TestDockerBuildOptions(t *testing.T) {
 	platform := java.Platform{}
-	ccSpec := &pb.ChaincodeSpec{
-		Type:        pb.ChaincodeSpec_JAVA,
-		ChaincodeId: &pb.ChaincodeID{Path: chaincodePathFolderGradle},
-		Input:       &pb.ChaincodeInput{Args: [][]byte{[]byte("init")}}}
 
-	cp, _ := platform.GetDeploymentPayload(ccSpec.ChaincodeId.Path)
+	opts, err := platform.DockerBuildOptions("path")
+	assert.NoError(t, err, "unexpected error from DockerBuildOptions")
 
-	cds := &pb.ChaincodeDeploymentSpec{
-		ChaincodeSpec: ccSpec,
-		CodePackage:   cp}
-
-	payload := bytes.NewBuffer(nil)
-	gw := gzip.NewWriter(payload)
-	tw := tar.NewWriter(gw)
-
-	err := platform.GenerateDockerBuild(cds.ChaincodeSpec.ChaincodeId.Path, cds.CodePackage, tw)
-	assert.NoError(t, err)
+	expectedOpts := util.DockerBuildOptions{
+		Image: "hyperledger/fabric-javaenv:latest",
+		Cmd:   "./build.sh",
+	}
+	assert.Equal(t, expectedOpts, opts)
 }
 
 func generateMockPackegeBytes(fileName string, mode int64) ([]byte, error) {
