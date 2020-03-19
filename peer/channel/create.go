@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric/common/tools/configtxgen/encoder"
 	genesisconfig "github.com/hyperledger/fabric/common/tools/configtxgen/localconfig"
 	"github.com/hyperledger/fabric/common/util"
+	"github.com/hyperledger/fabric/orderer/common/bootstrap/file"
 	"github.com/hyperledger/fabric/peer/common"
 	cb "github.com/hyperledger/fabric/protos/common"
 	"github.com/hyperledger/fabric/protos/utils"
@@ -60,6 +61,7 @@ func createCmd(cf *ChannelCmdFactory) *cobra.Command {
 	flagList := []string{
 		"channelID",
 		"file",
+		"blockpath",
 		"outputBlock",
 		"timeout",
 	}
@@ -200,6 +202,14 @@ func executeCreate(cf *ChannelCmdFactory) error {
 }
 
 func getGenesisBlock(cf *ChannelCmdFactory) (*cb.Block, error) {
+	if genesisBlockPath != "" {
+		_, err := ioutil.ReadFile(genesisBlockPath)
+		if err != nil {
+			return nil, errors.New(fmt.Sprintf("genesis block file not found %s", err.Error()))
+		}
+		return file.New(genesisBlockPath).GenesisBlock(), nil
+	}
+
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 

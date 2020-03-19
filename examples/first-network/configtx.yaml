@@ -367,6 +367,7 @@ Profiles:
             <<: *ChannelCapabilities
         Orderer:
             <<: *OrdererDefaults
+            OrdererType: etcdraft
             Addresses:
                 - orderer.example.com:7050
                 - orderer2.example.com:7050
