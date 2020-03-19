@@ -1,8 +1,7 @@
-/channel-artifacts/*.tx
-/channel-artifacts/*.block
-/crypto-config/*
+#/channel-artifacts/*.tx
+#/channel-artifacts/*.block
+#/channel-artifacts/*.json
+#/crypto-config/*
 /docker-compose-e2e.yaml
 /ledgers
 /ledgers-backup
-/channel-artifacts/*.json
-/org3-artifacts/crypto-config/*
