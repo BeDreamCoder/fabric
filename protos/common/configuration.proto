@@ -47,6 +47,10 @@ message Consortium {
     string name = 1;
 }
 
+// ConsensusType represents the orderer type in which the channel was created
+message ConsensusType {
+    string name = 1;
+}
 
 // Capabilities message defines the capabilities a particular binary must implement
 // for that binary to be able to safely participate in the channel.  The capabilities
