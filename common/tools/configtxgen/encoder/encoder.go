@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/msp"
 	cb "github.com/hyperledger/fabric/protos/common"
+	ab "github.com/hyperledger/fabric/protos/orderer"
 	"github.com/hyperledger/fabric/protos/orderer/etcdraft"
 	pb "github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protos/utils"
@@ -440,6 +441,17 @@ func NewChannelCreateConfigUpdate(channelID string, conf *genesisconfig.Profile,
 		Value: utils.MarshalOrPanic(&cb.Consortium{
 			Name: conf.Consortium,
 		}),
+	}
+
+	if conf.ConsensusType != "" {
+		updt.ReadSet.Values[channelconfig.ConsensusTypeKey] = &cb.ConfigValue{Version: 0}
+		updt.WriteSet.Values[channelconfig.ConsensusTypeKey] = &cb.ConfigValue{
+			Version: 0,
+			Value: utils.MarshalOrPanic(&ab.ConsensusType{
+				Type:     conf.ConsensusType,
+				Metadata: nil,
+			}),
+		}
 	}
 
 	return updt, nil
