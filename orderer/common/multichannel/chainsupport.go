@@ -61,13 +61,17 @@ func newChainSupport(
 
 	// Set up the block writer
 	cs.BlockWriter = newBlockWriter(lastBlock, registrar, cs)
-	logger.Infof("[channel: %s] consensus type is: %s", cs.ChainID(), ledgerResources.ChannelConfig().ConsensusType())
+
 	// Set up the consenter
 	consenterType := ledgerResources.ChannelConfig().ConsensusType()
+	if consenterType == "" {
+		consenterType = ledgerResources.SharedConfig().ConsensusType()
+	}
 	consenter, ok := consenters[consenterType]
 	if !ok {
 		logger.Panicf("Error retrieving consenter of type: %s", consenterType)
 	}
+	logger.Infof("[channel: %s] consensus type is: %s", cs.ChainID(), ledgerResources.ChannelConfig().ConsensusType())
 
 	cs.Chain, err = consenter.HandleChain(cs, metadata)
 	if err != nil {
