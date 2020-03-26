@@ -159,6 +159,10 @@ func NewChannelGroup(conf *genesisconfig.Profile) (*cb.ConfigGroup, error) {
 		addValue(channelGroup, channelconfig.ConsortiumValue(conf.Consortium), channelconfig.AdminsPolicyKey)
 	}
 
+	if conf.ConsensusType != "" {
+		addValue(channelGroup, channelconfig.ConsensusTypeValue(conf.ConsensusType, nil), channelconfig.AdminsPolicyKey)
+	}
+
 	if len(conf.Capabilities) > 0 {
 		addValue(channelGroup, channelconfig.CapabilitiesValue(conf.Capabilities), channelconfig.AdminsPolicyKey)
 	}
@@ -422,10 +426,6 @@ func NewChannelCreateConfigUpdate(channelID string, conf *genesisconfig.Profile,
 	newChannelGroup, err := NewChannelGroup(conf)
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not turn parse profile into channel group")
-	}
-
-	if conf.ConsensusType != "" {
-		addValue(newChannelGroup, channelconfig.ConsensusTypeValue(conf.ConsensusType, nil), channelconfig.AdminsPolicyKey)
 	}
 
 	updt, err := update.Compute(&cb.Config{ChannelGroup: templateConfig}, &cb.Config{ChannelGroup: newChannelGroup})
