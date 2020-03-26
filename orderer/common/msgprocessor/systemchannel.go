@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric/common/crypto"
 	"github.com/hyperledger/fabric/common/policies"
 	cb "github.com/hyperledger/fabric/protos/common"
+	ab "github.com/hyperledger/fabric/protos/orderer"
 	"github.com/hyperledger/fabric/protos/utils"
 
 	"github.com/hyperledger/fabric/orderer/common/localconfig"
@@ -265,6 +266,17 @@ func (dt *DefaultTemplator) NewChannelConfig(envConfigUpdate *cb.Envelope) (chan
 	if err != nil {
 		return nil, fmt.Errorf("Error reading unmarshaling consortium name: %s", err)
 	}
+
+	consensusTypeKeyValue, ok := configUpdate.WriteSet.Values[channelconfig.ConsensusTypeKey]
+	if !ok {
+		return nil, fmt.Errorf("ConsensusTypeKey config value missing")
+	}
+	consensusType := &ab.ConsensusType{}
+	err = proto.Unmarshal(consensusTypeKeyValue.Value, consensusType)
+	if err != nil {
+		return nil, fmt.Errorf("Error reading unmarshaling consensusType: %s", err)
+	}
+	logger.Info("ConsensusTypeKey config value:", consensusType.Type)
 
 	applicationGroup := cb.NewConfigGroup()
 	consortiumsConfig, ok := dt.support.ConsortiumsConfig()

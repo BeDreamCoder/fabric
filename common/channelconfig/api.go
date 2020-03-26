@@ -69,6 +69,9 @@ type Channel interface {
 
 	// Capabilities defines the capabilities for a channel
 	Capabilities() ChannelCapabilities
+
+	// ConsensusType defines the consensus type for a channel
+	ConsensusType() string
 }
 
 // Consortiums represents the set of consortiums serviced by an ordering service

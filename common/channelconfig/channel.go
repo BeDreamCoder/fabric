@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/msp"
 	cb "github.com/hyperledger/fabric/protos/common"
+	ab "github.com/hyperledger/fabric/protos/orderer"
 	"github.com/pkg/errors"
 )
 
@@ -61,6 +62,7 @@ type ChannelProtos struct {
 	OrdererAddresses          *cb.OrdererAddresses
 	Consortium                *cb.Consortium
 	Capabilities              *cb.Capabilities
+	ConsensusType             *ab.ConsensusType
 }
 
 // ChannelConfig stores the channel configuration
@@ -156,6 +158,11 @@ func (cc *ChannelConfig) OrdererAddresses() []string {
 // ConsortiumName returns the name of the consortium this channel was created under
 func (cc *ChannelConfig) ConsortiumName() string {
 	return cc.protos.Consortium.Name
+}
+
+// ConsensusType returns the tyoe of the consensus this channel was created under
+func (cc *ChannelConfig) ConsensusType() string {
+	return cc.protos.ConsensusType.Type
 }
 
 // Capabilities returns information about the available capabilities for this channel
