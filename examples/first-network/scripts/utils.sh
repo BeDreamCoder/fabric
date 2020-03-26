@@ -154,32 +154,6 @@ instantiateChaincode() {
   echo
 }
 
-instantiateChaincodeDefaultPolicy() {
-  PEER=$1
-  ORG=$2
-  setGlobals $PEER $ORG
-  VERSION=${3:-1.0}
-
-  # while 'peer chaincode' command can get the orderer endpoint from the peer
-  # (if join was successful), let's supply it directly as we know it using
-  # the "-o" option
-  if [ -z "$CORE_PEER_TLS_ENABLED" -o "$CORE_PEER_TLS_ENABLED" = "false" ]; then
-    set -x
-    peer chaincode instantiate -o orderer.example.com:7050 -C $CHANNEL_NAME -n mycc -l ${LANGUAGE} -v ${VERSION} -c '{"Args":["init","a","100","b","200"]}' >&log.txt
-    res=$?
-    set +x
-  else
-    set -x
-    peer chaincode instantiate -o orderer.example.com:7050 --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME -n mycc -l ${LANGUAGE} -v 1.0 -c '{"Args":["init","a","100","b","200"]}' >&log.txt
-    res=$?
-    set +x
-  fi
-  cat log.txt
-  verifyResult $res "Chaincode instantiation on peer${PEER}.org${ORG} on channel '$CHANNEL_NAME' failed"
-  echo "===================== Chaincode is instantiated on peer${PEER}.org${ORG} on channel '$CHANNEL_NAME' ===================== "
-  echo
-}
-
 upgradeChaincode() {
   PEER=$1
   ORG=$2
@@ -343,5 +317,54 @@ chaincodeInvoke() {
   cat log.txt
   verifyResult $res "Invoke execution on $PEERS failed "
   echo "===================== Invoke transaction successful on $PEERS on channel '$CHANNEL_NAME' ===================== "
+  echo
+}
+
+updateAnchorPeersForTestChannel() {
+  PEER=$1
+  ORG=$2
+  setGlobals $PEER $ORG
+
+  if [ -z "$CORE_PEER_TLS_ENABLED" -o "$CORE_PEER_TLS_ENABLED" = "false" ]; then
+    set -x
+    peer channel update -o orderer.example.com:7050 -c $CHANNEL_NAME -f ./channel-artifacts/Org1MSPanchorsForTestchannel.tx >&log.txt
+    res=$?
+    set +x
+  else
+    set -x
+    peer channel update -o orderer.example.com:7050 -c $CHANNEL_NAME -f ./channel-artifacts/Org1MSPanchorsForTestchannel.tx --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA >&log.txt
+    res=$?
+    set +x
+  fi
+  cat log.txt
+  verifyResult $res "Anchor peer update failed"
+  echo "===================== Anchor peers updated for org '$CORE_PEER_LOCALMSPID' on channel '$CHANNEL_NAME' ===================== "
+  sleep $DELAY
+  echo
+}
+
+instantiateChaincodeDefaultPolicy() {
+  PEER=$1
+  ORG=$2
+  setGlobals $PEER $ORG
+  VERSION=${3:-1.0}
+
+  # while 'peer chaincode' command can get the orderer endpoint from the peer
+  # (if join was successful), let's supply it directly as we know it using
+  # the "-o" option
+  if [ -z "$CORE_PEER_TLS_ENABLED" -o "$CORE_PEER_TLS_ENABLED" = "false" ]; then
+    set -x
+    peer chaincode instantiate -o orderer.example.com:7050 -C $CHANNEL_NAME -n mycc -l ${LANGUAGE} -v ${VERSION} -c '{"Args":["init","a","100","b","200"]}' >&log.txt
+    res=$?
+    set +x
+  else
+    set -x
+    peer chaincode instantiate -o orderer.example.com:7050 --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME -n mycc -l ${LANGUAGE} -v 1.0 -c '{"Args":["init","a","100","b","200"]}' >&log.txt
+    res=$?
+    set +x
+  fi
+  cat log.txt
+  verifyResult $res "Chaincode instantiation on peer${PEER}.org${ORG} on channel '$CHANNEL_NAME' failed"
+  echo "===================== Chaincode is instantiated on peer${PEER}.org${ORG} on channel '$CHANNEL_NAME' ===================== "
   echo
 }
