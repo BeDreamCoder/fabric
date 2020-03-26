@@ -267,17 +267,6 @@ func (dt *DefaultTemplator) NewChannelConfig(envConfigUpdate *cb.Envelope) (chan
 		return nil, fmt.Errorf("Error reading unmarshaling consortium name: %s", err)
 	}
 
-	consensusTypeKeyValue, ok := configUpdate.WriteSet.Values[channelconfig.ConsensusTypeKey]
-	if !ok {
-		return nil, fmt.Errorf("ConsensusTypeKey config value missing")
-	}
-	consensusType := &ab.ConsensusType{}
-	err = proto.Unmarshal(consensusTypeKeyValue.Value, consensusType)
-	if err != nil {
-		return nil, fmt.Errorf("Error reading unmarshaling consensusType: %s", err)
-	}
-	logger.Info("ConsensusTypeKey config value:", consensusType.Type)
-
 	applicationGroup := cb.NewConfigGroup()
 	consortiumsConfig, ok := dt.support.ConsortiumsConfig()
 	if !ok {
@@ -338,9 +327,18 @@ func (dt *DefaultTemplator) NewChannelConfig(envConfigUpdate *cb.Envelope) (chan
 		Value:     utils.MarshalOrPanic(channelconfig.ConsortiumValue(consortium.Name).Value()),
 		ModPolicy: channelconfig.AdminsPolicyKey,
 	}
-	channelGroup.Values[channelconfig.ConsensusTypeKey] = &cb.ConfigValue{
-		Value:     utils.MarshalOrPanic(channelconfig.ConsensusTypeValue(consensusType.Type, consensusType.Metadata).Value()),
-		ModPolicy: channelconfig.AdminsPolicyKey,
+
+	if consensusTypeKeyValue, ok := configUpdate.WriteSet.Values[channelconfig.ConsensusTypeKey]; ok {
+		consensusType := &ab.ConsensusType{}
+		err = proto.Unmarshal(consensusTypeKeyValue.Value, consensusType)
+		if err != nil {
+			return nil, fmt.Errorf("Error reading unmarshaling consensusType: %s", err)
+		}
+		channelGroup.Values[channelconfig.ConsensusTypeKey] = &cb.ConfigValue{
+			Value:     utils.MarshalOrPanic(channelconfig.ConsensusTypeValue(consensusType.Type, consensusType.Metadata).Value()),
+			ModPolicy: channelconfig.AdminsPolicyKey,
+		}
+		logger.Info("ConsensusTypeKey config value:", consensusType.Type)
 	}
 
 	// Non-backwards compatible bugfix introduced in v1.1
