@@ -343,6 +343,7 @@ Profiles:
     OneOrgChannel:
         Consortium: SingleConsortium
         <<: *ChannelDefaults
+        ConsensusType: solo
         Application:
             <<: *ApplicationDefaults
             Organizations:
@@ -353,6 +354,7 @@ Profiles:
     TwoOrgsChannel:
         Consortium: SampleConsortium
         <<: *ChannelDefaults
+        ConsensusType: etcdraft
         Application:
             <<: *ApplicationDefaults
             Organizations:

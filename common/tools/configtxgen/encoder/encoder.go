@@ -423,6 +423,10 @@ func NewChannelCreateConfigUpdate(channelID string, conf *genesisconfig.Profile,
 		return nil, errors.Wrapf(err, "could not turn parse profile into channel group")
 	}
 
+	if conf.ConsensusType != "" {
+		addValue(newChannelGroup, channelconfig.ConsensusTypeValue(conf.ConsensusType, nil), channelconfig.AdminsPolicyKey)
+	}
+
 	updt, err := update.Compute(&cb.Config{ChannelGroup: templateConfig}, &cb.Config{ChannelGroup: newChannelGroup})
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not compute update")
