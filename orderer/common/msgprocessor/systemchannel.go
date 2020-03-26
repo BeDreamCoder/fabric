@@ -338,6 +338,10 @@ func (dt *DefaultTemplator) NewChannelConfig(envConfigUpdate *cb.Envelope) (chan
 		Value:     utils.MarshalOrPanic(channelconfig.ConsortiumValue(consortium.Name).Value()),
 		ModPolicy: channelconfig.AdminsPolicyKey,
 	}
+	channelGroup.Values[channelconfig.ConsensusTypeKey] = &cb.ConfigValue{
+		Value:     utils.MarshalOrPanic(channelconfig.ConsensusTypeValue(consensusType.Type, consensusType.Metadata).Value()),
+		ModPolicy: channelconfig.AdminsPolicyKey,
+	}
 
 	// Non-backwards compatible bugfix introduced in v1.1
 	// The capability check should be removed once v1.0 is deprecated
