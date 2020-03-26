@@ -37,7 +37,7 @@ fi
 echo "Channel name : "$CHANNEL_NAME
 
 # import utils
-. scripts/utils.sh
+. scripts/testutils.sh
 
 createChannel() {
 	setGlobals 0 1
@@ -80,17 +80,17 @@ joinChannel
 
 ## Set the anchor peers for each org in the channel
 echo "Updating anchor peers for org1..."
-updateAnchorPeersForTestChannel 0 1
+updateAnchorPeers 0 1
 
 if [ "${NO_CHAINCODE}" != "true" ]; then
 
 	## Install chaincode on peer0.org1 and peer0.org2
-#	echo "Installing chaincode on peer0.org1..."
-#	installChaincode 0 1
+	echo "Installing chaincode on peer0.org1..."
+	installChaincode 0 1
 
 	# Instantiate chaincode on peer0.org2
 	echo "Instantiating chaincode on peer0.org1..."
-	instantiateChaincodeDefaultPolicy 0 1
+	instantiateChaincode 0 1
 
 	# Query chaincode on peer0.org1
 	echo "Querying chaincode on peer0.org1..."
