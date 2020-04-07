@@ -110,7 +110,7 @@ func (ch *chain) main() {
 		select {
 		case msg := <-ch.sendChan:
 			if msg.configMsg == nil {
-				logger.Infof("solo handle NormalMsg configSeq: %d", msg.configMsg)
+				logger.Infof("solo handle NormalMsg configSeq: %d", msg.configSeq)
 				// NormalMsg
 				if msg.configSeq < seq {
 					_, err = ch.support.ProcessNormalMsg(msg.normalMsg)
@@ -141,7 +141,7 @@ func (ch *chain) main() {
 				}
 
 			} else {
-				logger.Infof("solo handle ConfigMsg configSeq: %d", msg.configMsg)
+				logger.Infof("solo handle ConfigMsg configSeq: %d", msg.configSeq)
 				// ConfigMsg
 				if msg.configSeq < seq {
 					msg.configMsg, _, err = ch.support.ProcessConfigMsg(msg.configMsg)
