@@ -70,6 +70,7 @@ func (ch *chain) WaitReady() error {
 
 // Order accepts normal messages for ordering
 func (ch *chain) Order(env *cb.Envelope, configSeq uint64) error {
+	logger.Infof("solo order configSeq: %d", configSeq)
 	select {
 	case ch.sendChan <- &message{
 		configSeq: configSeq,
@@ -109,6 +110,7 @@ func (ch *chain) main() {
 		select {
 		case msg := <-ch.sendChan:
 			if msg.configMsg == nil {
+				logger.Infof("solo handle NormalMsg configSeq: %d", msg.configMsg)
 				// NormalMsg
 				if msg.configSeq < seq {
 					_, err = ch.support.ProcessNormalMsg(msg.normalMsg)
@@ -139,6 +141,7 @@ func (ch *chain) main() {
 				}
 
 			} else {
+				logger.Infof("solo handle ConfigMsg configSeq: %d", msg.configMsg)
 				// ConfigMsg
 				if msg.configSeq < seq {
 					msg.configMsg, _, err = ch.support.ProcessConfigMsg(msg.configMsg)

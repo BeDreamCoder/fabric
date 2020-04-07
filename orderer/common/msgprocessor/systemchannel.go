@@ -69,15 +69,16 @@ func (s *SystemChannel) ProcessNormalMsg(msg *cb.Envelope) (configSeq uint64, er
 	if err != nil {
 		return 0, err
 	}
-
+	logger.Infof("SystemChannel ProcessNormalMsg channelId:%s", channelID)
 	// For the StandardChannel message processing, we would not check the channel ID,
 	// because the message processor is looked up by channel ID.
 	// However, the system channel message processor is the catch all for messages
 	// which do not correspond to an extant channel, so we must check it here.
 	if channelID != s.support.ChainID() {
+		logger.Infof("SystemChannel ProcessNormalMsg channel does not exist,  %s, %s", channelID, s.support.ChainID())
 		return 0, ErrChannelDoesNotExist
 	}
-
+	logger.Infof("SystemChannel StandardChannel ProcessNormalMsg channelId:%s", channelID)
 	return s.StandardChannel.ProcessNormalMsg(msg)
 }
 

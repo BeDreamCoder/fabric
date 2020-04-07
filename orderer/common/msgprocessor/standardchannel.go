@@ -95,6 +95,7 @@ func (s *StandardChannel) ProcessNormalMsg(env *cb.Envelope) (configSeq uint64, 
 	if !ok {
 		logger.Panicf("Missing orderer config")
 	}
+	logger.Infof("StandardChannel ProcessNormalMsg consensus:%s, ConsensusState:%s, ConsensusTypeMigration:%v", oc.ConsensusType(), oc.ConsensusState(), oc.Capabilities().ConsensusTypeMigration())
 	if oc.Capabilities().ConsensusTypeMigration() {
 		if oc.ConsensusState() != orderer.ConsensusType_STATE_NORMAL {
 			return 0, errors.WithMessage(
@@ -104,6 +105,7 @@ func (s *StandardChannel) ProcessNormalMsg(env *cb.Envelope) (configSeq uint64, 
 
 	configSeq = s.support.Sequence()
 	err = s.filters.Apply(env)
+	logger.Infof("StandardChannel ProcessNormalMsg, configSeq:%d, err:%v", configSeq, err)
 	return
 }
 
