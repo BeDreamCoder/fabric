@@ -120,7 +120,6 @@ func (ch *chain) main() {
 					}
 				}
 				batches, pending := ch.support.BlockCutter().Ordered(msg.normalMsg)
-				logger.Info("Solo handle NormalMsg pending: %v", pending)
 				for _, batch := range batches {
 					block := ch.support.CreateNextBlock(batch)
 					ch.support.WriteBlock(block, nil)
@@ -155,10 +154,12 @@ func (ch *chain) main() {
 				if batch != nil {
 					block := ch.support.CreateNextBlock(batch)
 					ch.support.WriteBlock(block, nil)
+					logger.Infof("Writing block [%d] (Solo) to ledger", block.Header.Number)
 				}
 
 				block := ch.support.CreateNextBlock([]*cb.Envelope{msg.configMsg})
 				ch.support.WriteConfigBlock(block, nil)
+				logger.Infof("Writing config block [%d] (Solo) to ledger", block.Header.Number)
 				timer = nil
 			}
 		case <-timer:
