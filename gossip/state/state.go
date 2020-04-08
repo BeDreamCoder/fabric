@@ -571,7 +571,7 @@ func (s *GossipStateProviderImpl) deliverPayloads() {
 		select {
 		// Wait for notification that next seq has arrived
 		case <-s.payloads.Ready():
-			logger.Debugf("[%s] Ready to transfer payloads (blocks) to the ledger, next block number is = [%d]", s.chainID, s.payloads.Next())
+			logger.Infof("[%s] Ready to transfer payloads (blocks) to the ledger, next block number is = [%d]", s.chainID, s.payloads.Next())
 			// Collect all subsequent payloads
 			for payload := s.payloads.Pop(); payload != nil; payload = s.payloads.Pop() {
 				rawBlock := &common.Block{}
