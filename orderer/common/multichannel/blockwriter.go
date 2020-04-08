@@ -190,7 +190,7 @@ func (bw *BlockWriter) commitBlock(encodedMetadataValue []byte) {
 	if err != nil {
 		logger.Panicf("[channel: %s] Could not append block: %s", bw.support.ChainID(), err)
 	}
-	logger.Debugf("[channel: %s] Wrote block [%d]", bw.support.ChainID(), bw.lastBlock.GetHeader().Number)
+	logger.Infof("[channel: %s] Wrote block [%d]", bw.support.ChainID(), bw.lastBlock.GetHeader().Number)
 }
 
 func (bw *BlockWriter) addBlockSignature(block *cb.Block) {
