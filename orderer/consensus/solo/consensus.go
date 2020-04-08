@@ -110,7 +110,7 @@ func (ch *chain) main() {
 		select {
 		case msg := <-ch.sendChan:
 			if msg.configMsg == nil {
-				logger.Infof("solo handle NormalMsg configSeq: %d", msg.configSeq)
+				logger.Infof("Solo handle NormalMsg configSeq: %d, seq: %d", msg.configSeq, seq)
 				// NormalMsg
 				if msg.configSeq < seq {
 					_, err = ch.support.ProcessNormalMsg(msg.normalMsg)
@@ -120,10 +120,11 @@ func (ch *chain) main() {
 					}
 				}
 				batches, pending := ch.support.BlockCutter().Ordered(msg.normalMsg)
-
+				logger.Info("Solo handle NormalMsg pending: %v", pending)
 				for _, batch := range batches {
 					block := ch.support.CreateNextBlock(batch)
 					ch.support.WriteBlock(block, nil)
+					logger.Infof("Writing block [%d] (Solo) to ledger", block.Header.Number)
 				}
 
 				switch {
@@ -133,7 +134,7 @@ func (ch *chain) main() {
 				case timer == nil && pending:
 					// Timer is not already running and there are messages pending, so start it
 					timer = time.After(ch.support.SharedConfig().BatchTimeout())
-					logger.Debugf("Just began %s batch timer", ch.support.SharedConfig().BatchTimeout().String())
+					logger.Infof("Just began %s batch timer", ch.support.SharedConfig().BatchTimeout().String())
 				default:
 					// Do nothing when:
 					// 1. Timer is already running and there are messages pending
@@ -169,11 +170,12 @@ func (ch *chain) main() {
 				logger.Warningf("Batch timer expired with no pending requests, this might indicate a bug")
 				continue
 			}
-			logger.Debugf("Batch timer expired, creating block")
+			logger.Info("Batch timer expired, creating block")
 			block := ch.support.CreateNextBlock(batch)
 			ch.support.WriteBlock(block, nil)
+			logger.Infof("Writing block [%d] (Solo) to ledger", block.Header.Number)
 		case <-ch.exitChan:
-			logger.Debugf("Exiting")
+			logger.Warn("Exiting")
 			return
 		}
 	}
