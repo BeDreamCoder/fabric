@@ -151,11 +151,11 @@ func NewHandler(cm ChainManager, timeWindow time.Duration, mutualTLS bool, metri
 // Handle receives incoming deliver requests.
 func (h *Handler) Handle(ctx context.Context, srv *Server) error {
 	addr := util.ExtractRemoteAddress(ctx)
-	logger.Debugf("Starting new deliver loop for %s", addr)
+	logger.Infof("Starting new deliver loop for %s", addr)
 	h.Metrics.StreamsOpened.Add(1)
 	defer h.Metrics.StreamsClosed.Add(1)
 	for {
-		logger.Debugf("Attempting to read seek info message from %s", addr)
+		logger.Infof("Attempting to read seek info message from %s", addr)
 		envelope, err := srv.Recv()
 		if err == io.EOF {
 			logger.Debugf("Received EOF from %s, hangup", addr)
@@ -269,7 +269,7 @@ func (h *Handler) deliverBlocks(ctx context.Context, srv *Server, envelope *cb.E
 		return cb.Status_BAD_REQUEST, nil
 	}
 
-	logger.Debugf("[channel: %s] Received seekInfo (%p) %v from %s", chdr.ChannelId, seekInfo, seekInfo, addr)
+	logger.Infof("[channel: %s] Received seekInfo (%p) %v from %s", chdr.ChannelId, seekInfo, seekInfo, addr)
 
 	cursor, number := chain.Reader().Iterator(seekInfo.Start)
 	defer cursor.Close()

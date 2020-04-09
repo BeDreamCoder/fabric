@@ -167,7 +167,7 @@ func (bc *broadcastClient) connect() error {
 		return err
 	}
 	ctx, cf := context.WithCancel(context.Background())
-	logger.Debug("Establishing gRPC stream with", endpoint, "...")
+	logger.Info("Establishing gRPC stream with", endpoint, "...")
 	abc, err := bc.createClient(conn).Deliver(ctx)
 	if err != nil {
 		logger.Error("Connection to ", endpoint, "established but was unable to create gRPC stream:", err)
