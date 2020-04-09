@@ -2,15 +2,16 @@ package ormdb
 
 import (
 	"github.com/hyperledger/fabric/common/viperutil"
+	"github.com/jinzhu/gorm"
 	"github.com/pkg/errors"
 )
 
+// ORMDBConfig
 type ORMDBConfig struct {
 	Username      string
 	Password      string
 	Host          string
 	Port          int
-	DBName        string
 	Sqlite3Config *Sqlite3Config
 }
 
@@ -24,6 +25,15 @@ type ORMDBInstance struct {
 	Config *ORMDBConfig
 }
 
+//CouchDatabase represents a database within a CouchDB instance
+type ORMDatabase struct {
+	ORMDBInstance *ORMDBInstance //connection configuration
+	DBName        string
+	DB            *gorm.DB
+	Type          string
+}
+
+//NewORMDBInstance create a ORMDB instance through ORMDBConfig
 func NewORMDBInstance() (*ORMDBInstance, error) {
 	config := &ORMDBConfig{}
 	err := viperutil.EnhancedExactUnmarshalKey("ledger.state.ormDBConfig", config)
