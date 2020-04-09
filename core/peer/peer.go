@@ -359,6 +359,7 @@ func createChain(
 			return err
 		}
 	}
+	logger.Infof("peer create chain retrieve channel config: %v", bundle.ChannelConfig())
 
 	capabilitiesSupportedOrPanic(bundle)
 
