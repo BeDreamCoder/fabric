@@ -1,24 +1,9 @@
 package ormdb
 
 import (
-	"github.com/hyperledger/fabric/common/viperutil"
+	"github.com/hyperledger/fabric/common/metrics"
 	"github.com/jinzhu/gorm"
-	"github.com/pkg/errors"
 )
-
-// ORMDBConfig
-type ORMDBConfig struct {
-	Username      string
-	Password      string
-	Host          string
-	Port          int
-	Sqlite3Config *Sqlite3Config
-}
-
-// Sqlite3Config
-type Sqlite3Config struct {
-	Path string
-}
 
 //ORMDBInstance represents a ORMDB instance
 type ORMDBInstance struct {
@@ -34,13 +19,32 @@ type ORMDatabase struct {
 }
 
 //NewORMDBInstance create a ORMDB instance through ORMDBConfig
-func NewORMDBInstance() (*ORMDBInstance, error) {
-	config := &ORMDBConfig{}
-	err := viperutil.EnhancedExactUnmarshalKey("ledger.state.ormDBConfig", config)
+func NewORMDBInstance(metricsProvider metrics.Provider) (*ORMDBInstance, error) {
+	config, err := GetORMDBConfig()
 	if err != nil {
-		return nil, errors.WithMessage(err, "load ormdb config from yaml failed")
-	}
 
+	}
 	ormDBInstance := &ORMDBInstance{Config: config}
 	return ormDBInstance, nil
+}
+
+//CreateCouchDatabase creates a CouchDB database object, as well as the underlying database if it does not exist
+func CreateCouchDatabase(couchInstance *CouchInstance, dbName string) (*CouchDatabase, error) {
+
+	databaseName, err := mapAndValidateDatabaseName(dbName)
+	if err != nil {
+		logger.Errorf("Error calling CouchDB CreateDatabaseIfNotExist() for dbName: %s, error: %s", dbName, err)
+		return nil, err
+	}
+
+	couchDBDatabase := CouchDatabase{CouchInstance: couchInstance, DBName: databaseName, IndexWarmCounter: 1}
+
+	// Create CouchDB database upon ledger startup, if it doesn't already exist
+	err = couchDBDatabase.CreateDatabaseIfNotExist()
+	if err != nil {
+		logger.Errorf("Error calling CouchDB CreateDatabaseIfNotExist() for dbName: %s, error: %s", dbName, err)
+		return nil, err
+	}
+
+	return &couchDBDatabase, nil
 }
