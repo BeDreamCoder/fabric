@@ -398,7 +398,15 @@ func NewConsortiumsGroup(conf map[string]*genesisconfig.Consortium) (*cb.ConfigG
 // Add by ztl
 func NewConsensusGroup(conf *genesisconfig.Consensus) (*cb.ConfigGroup, error) {
 	consensusGroup := cb.NewConfigGroup()
-	addPolicy(consensusGroup, policies.SignaturePolicy(channelconfig.AdminsPolicyKey, cauthdsl.AcceptAllPolicy), channelconfig.AdminsPolicyKey)
+	if len(conf.Policies) == 0 {
+		logger.Warningf("Default policy emission is deprecated, please include policy specifications for the consensus group in configtx.yaml")
+		addImplicitMetaPolicyDefaults(consensusGroup)
+	} else {
+		if err := addPolicies(consensusGroup, conf.Policies, channelconfig.AdminsPolicyKey); err != nil {
+			return nil, errors.Wrapf(err, "error adding policies to consensus group %s", conf.ConsensusType)
+		}
+	}
+
 	addValue(consensusGroup, channelconfig.ConsensusTypeValue(conf.ConsensusType, nil), channelconfig.AdminsPolicyKey)
 	addValue(consensusGroup, channelconfig.OrdererAddressesValue(conf.OrdererAddresses), channelconfig.AdminsPolicyKey)
 	consensusGroup.ModPolicy = channelconfig.AdminsPolicyKey

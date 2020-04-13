@@ -83,6 +83,7 @@ func (vi *ValidatorImpl) verifyDeltaSet(deltaSet map[string]comparable, signedDa
 
 			continue
 		}
+		logger.Infof("verifyDeltaSet, key: %s, v: %d, e:% d", key, value.version(), existing.version())
 		if value.version() != existing.version()+1 {
 			return errors.Errorf("attempt to set key %s to version %d, but key is at version %d", key, value.version(), existing.version())
 		}
