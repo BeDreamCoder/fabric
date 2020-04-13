@@ -32,6 +32,10 @@ type Resources struct {
 	// ConsortiumsConfigVal is returned as the result of ConsortiumsConfig()
 	ConsortiumsConfigVal channelconfig.Consortiums
 
+	// Add by ztl
+	// ConsensusConfigVal is returned as the result of ConsensusConfig()
+	ConsensusConfigVal channelconfig.ChannelConsensus
+
 	// MSPManagerVal is returned as the result of MSPManager()
 	MSPManagerVal msp.MSPManager
 
@@ -66,6 +70,11 @@ func (r *Resources) ApplicationConfig() (channelconfig.Application, bool) {
 
 func (r *Resources) ConsortiumsConfig() (channelconfig.Consortiums, bool) {
 	return r.ConsortiumsConfigVal, r.ConsortiumsConfigVal != nil
+}
+
+// Add by ztl
+func (r *Resources) ConsensusConfig() (channelconfig.ChannelConsensus, bool) {
+	return r.ConsensusConfigVal, r.ConsensusConfigVal != nil
 }
 
 // Returns the MSPManagerVal

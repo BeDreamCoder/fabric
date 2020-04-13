@@ -92,6 +92,12 @@ func (bs *BundleSource) ApplicationConfig() (Application, bool) {
 	return bs.StableBundle().ApplicationConfig()
 }
 
+// Add by ztl
+// ConsensusConfig returns the consensus config associated with this channel create
+func (bs *BundleSource) ConsensusConfig() (ChannelConsensus, bool) {
+	return bs.StableBundle().ConsensusConfig()
+}
+
 // ConfigtxValidator returns the configtx.Validator for the channel
 func (bs *BundleSource) ConfigtxValidator() configtx.Validator {
 	return bs.StableBundle().ConfigtxValidator()
