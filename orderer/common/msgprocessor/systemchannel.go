@@ -8,7 +8,6 @@ package msgprocessor
 
 import (
 	"fmt"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/configtx"
@@ -330,6 +329,13 @@ func (dt *DefaultTemplator) NewChannelConfig(envConfigUpdate *cb.Envelope) (chan
 	// Add by ztl
 	if systemChannelGroup.Groups[channelconfig.ConsensusGroupKey] != nil {
 		channelGroup.Groups[channelconfig.ConsensusGroupKey] = proto.Clone(systemChannelGroup.Groups[channelconfig.ConsensusGroupKey]).(*cb.ConfigGroup)
+	} else if configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey] != nil {
+		consensusGroup := cb.NewConfigGroup()
+		for key, value := range configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey].Values {
+			consensusGroup.Values[key] = proto.Clone(value).(*cb.ConfigValue)
+		}
+		//consensusGroup.ModPolicy = channelconfig.AdminsPolicyKey
+		channelGroup.Groups[channelconfig.ConsensusGroupKey] = consensusGroup
 	}
 
 	// Non-backwards compatible bugfix introduced in v1.1
