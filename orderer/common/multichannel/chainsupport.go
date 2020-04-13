@@ -71,7 +71,7 @@ func newChainSupport(
 	if !ok {
 		logger.Panicf("Error retrieving consenter of type: %s", consenterType)
 	}
-	logger.Infof("[channel: %s] consensus type is: %s", cs.ChainID(), ledgerResources.ChannelConfig().ConsensusType())
+	logger.Infof("[channel: %s] consensus type is: %s", cs.ChainID(), consenterType)
 
 	cs.Chain, err = consenter.HandleChain(cs, metadata)
 	if err != nil {

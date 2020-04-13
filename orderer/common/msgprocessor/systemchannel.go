@@ -14,10 +14,9 @@ import (
 	"github.com/hyperledger/fabric/common/configtx"
 	"github.com/hyperledger/fabric/common/crypto"
 	"github.com/hyperledger/fabric/common/policies"
+	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	cb "github.com/hyperledger/fabric/protos/common"
 	"github.com/hyperledger/fabric/protos/utils"
-
-	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/pkg/errors"
 )
 
@@ -328,9 +327,18 @@ func (dt *DefaultTemplator) NewChannelConfig(envConfigUpdate *cb.Envelope) (chan
 		ModPolicy: channelconfig.AdminsPolicyKey,
 	}
 
+	// Add by ztl
 	if configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey] != nil {
 		logger.Info("ConsensusGroupKey in config update WriteSet.")
 		channelGroup.Groups[channelconfig.ConsensusGroupKey] = proto.Clone(configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey]).(*cb.ConfigGroup)
+		//consensusGroup := cb.NewConfigGroup()
+		//policy := policies.SignaturePolicy(channelconfig.AdminsPolicyKey, cauthdsl.AcceptAllPolicy)
+		//consensusGroup.Policies[policy.Key()] = &cb.ConfigPolicy{
+		//	Policy:    policy.Value(),
+		//	ModPolicy: channelconfig.AdminsPolicyKey,
+		//}
+		//consensusGroup.ModPolicy = channelconfig.AdminsPolicyKey
+		//channelGroup.Groups[channelconfig.ConsensusGroupKey] = consensusGroup
 	}
 
 	// Non-backwards compatible bugfix introduced in v1.1

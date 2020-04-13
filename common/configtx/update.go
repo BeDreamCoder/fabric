@@ -32,7 +32,7 @@ func computeDeltaSet(readSet, writeSet map[string]comparable) map[string]compara
 	result := make(map[string]comparable)
 	for key, value := range writeSet {
 		readVal, ok := readSet[key]
-
+		logger.Infof("computeDeltaSet key: %s, readVer: %d, writeVer: %d", key, readVal.version(), value.version())
 		if ok && readVal.version() == value.version() {
 			continue
 		}
