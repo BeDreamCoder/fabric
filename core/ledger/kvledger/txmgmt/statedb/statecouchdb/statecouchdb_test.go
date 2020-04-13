@@ -712,13 +712,13 @@ func TestLSCCStateCache(t *testing.T) {
 	db.ApplyUpdates(batch, savePoint)
 
 	// cache should not contain key1 and key2
-	assert.Nil(t, db.(*VersionedDB).lsccStateCache.getState("key1"))
-	assert.Nil(t, db.(*VersionedDB).lsccStateCache.getState("key2"))
+	assert.Nil(t, db.(*VersionedDB).lsccStateCache.GetState("key1"))
+	assert.Nil(t, db.(*VersionedDB).lsccStateCache.GetState("key2"))
 
 	// GetState() populates the cache
 	valueFromDB, err := db.GetState("lscc", "key1")
 	assert.NoError(t, err)
-	valueFromCache := db.(*VersionedDB).lsccStateCache.getState("key1")
+	valueFromCache := db.(*VersionedDB).lsccStateCache.GetState("key1")
 	assert.Equal(t, valueFromCache, valueFromDB)
 
 	// Scenario 2: updates an existing key in lscc namespace. Note that the
@@ -728,7 +728,7 @@ func TestLSCCStateCache(t *testing.T) {
 	savePoint = version.NewHeight(1, 2)
 	db.ApplyUpdates(batch, savePoint)
 
-	valueFromCache = db.(*VersionedDB).lsccStateCache.getState("key1")
+	valueFromCache = db.(*VersionedDB).lsccStateCache.GetState("key1")
 	expectedValue := &statedb.VersionedValue{Value: []byte("new-value1"), Version: version.NewHeight(1, 2)}
 	assert.Equal(t, expectedValue, valueFromCache)
 
@@ -736,17 +736,17 @@ func TestLSCCStateCache(t *testing.T) {
 	// Read all keys in lscc namespace to make the cache full. This is to
 	// test the eviction.
 	batch = statedb.NewUpdateBatch()
-	for i := 0; i < lsccCacheSize; i++ {
+	for i := 0; i < statedb.LsccCacheSize; i++ {
 		batch.Put("lscc", "key"+strconv.Itoa(i), []byte("value"+strconv.Itoa(i)), version.NewHeight(1, 3))
 	}
 	savePoint = version.NewHeight(1, 3)
 	db.ApplyUpdates(batch, savePoint)
 
-	for i := 0; i < lsccCacheSize; i++ {
+	for i := 0; i < statedb.LsccCacheSize; i++ {
 		_, err := db.GetState("lscc", "key"+strconv.Itoa(i))
 		assert.NoError(t, err)
 	}
-	assert.Equal(t, true, db.(*VersionedDB).lsccStateCache.isCacheFull())
+	assert.Equal(t, true, db.(*VersionedDB).lsccStateCache.IsCacheFull())
 
 	batch = statedb.NewUpdateBatch()
 	batch.Put("lscc", "key50", []byte("value1"), version.NewHeight(1, 4))
@@ -756,9 +756,9 @@ func TestLSCCStateCache(t *testing.T) {
 	// GetState() populates the cache after a eviction
 	valueFromDB, err = db.GetState("lscc", "key50")
 	assert.NoError(t, err)
-	valueFromCache = db.(*VersionedDB).lsccStateCache.getState("key50")
+	valueFromCache = db.(*VersionedDB).lsccStateCache.GetState("key50")
 	assert.Equal(t, valueFromCache, valueFromDB)
-	assert.Equal(t, true, db.(*VersionedDB).lsccStateCache.isCacheFull())
+	assert.Equal(t, true, db.(*VersionedDB).lsccStateCache.IsCacheFull())
 }
 
 func TestApplyUpdatesWithNilHeight(t *testing.T) {
