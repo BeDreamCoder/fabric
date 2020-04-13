@@ -328,17 +328,8 @@ func (dt *DefaultTemplator) NewChannelConfig(envConfigUpdate *cb.Envelope) (chan
 	}
 
 	// Add by ztl
-	if configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey] != nil {
-		logger.Info("ConsensusGroupKey in config update WriteSet.")
-		channelGroup.Groups[channelconfig.ConsensusGroupKey] = proto.Clone(configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey]).(*cb.ConfigGroup)
-		//consensusGroup := cb.NewConfigGroup()
-		//policy := policies.SignaturePolicy(channelconfig.AdminsPolicyKey, cauthdsl.AcceptAllPolicy)
-		//consensusGroup.Policies[policy.Key()] = &cb.ConfigPolicy{
-		//	Policy:    policy.Value(),
-		//	ModPolicy: channelconfig.AdminsPolicyKey,
-		//}
-		//consensusGroup.ModPolicy = channelconfig.AdminsPolicyKey
-		//channelGroup.Groups[channelconfig.ConsensusGroupKey] = consensusGroup
+	if systemChannelGroup.Groups[channelconfig.ConsensusGroupKey] != nil {
+		channelGroup.Groups[channelconfig.ConsensusGroupKey] = proto.Clone(systemChannelGroup.Groups[channelconfig.ConsensusGroupKey]).(*cb.ConfigGroup)
 	}
 
 	// Non-backwards compatible bugfix introduced in v1.1
