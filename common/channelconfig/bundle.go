@@ -70,6 +70,13 @@ func (b *Bundle) ApplicationConfig() (Application, bool) {
 	return result, result != nil
 }
 
+// Add by ztl
+// ConsensusConfig returns the consensus config associated with this channel create
+func (b *Bundle) ConsensusConfig() (ChannelConsensus, bool) {
+	result := b.channelConfig.ConsensusConfig()
+	return result, result != nil
+}
+
 // ConfigtxValidator returns the configtx.Validator for the channel.
 func (b *Bundle) ConfigtxValidator() configtx.Validator {
 	return b.configtxManager

@@ -342,8 +342,11 @@ Profiles:
 
     OneOrgChannel:
         Consortium: SingleConsortium
+        Consensus:
+            ConsensusType: solo
+            OrdererAddresses:
+                - orderer.example.com:7050
         <<: *ChannelDefaults
-        ConsensusType: solo
         Application:
             <<: *ApplicationDefaults
             Organizations:
@@ -354,7 +357,14 @@ Profiles:
     TwoOrgsChannel:
         Consortium: SampleConsortium
         <<: *ChannelDefaults
-        ConsensusType: etcdraft
+        Consensus:
+            ConsensusType: etcdraft
+            OrdererAddresses:
+                - orderer.example.com:7050
+                - orderer2.example.com:7050
+                - orderer3.example.com:7050
+                - orderer4.example.com:7050
+                - orderer5.example.com:7050
         Application:
             <<: *ApplicationDefaults
             Organizations:

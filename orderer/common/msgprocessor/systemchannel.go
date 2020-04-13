@@ -15,7 +15,6 @@ import (
 	"github.com/hyperledger/fabric/common/crypto"
 	"github.com/hyperledger/fabric/common/policies"
 	cb "github.com/hyperledger/fabric/protos/common"
-	ab "github.com/hyperledger/fabric/protos/orderer"
 	"github.com/hyperledger/fabric/protos/utils"
 
 	"github.com/hyperledger/fabric/orderer/common/localconfig"
@@ -329,17 +328,9 @@ func (dt *DefaultTemplator) NewChannelConfig(envConfigUpdate *cb.Envelope) (chan
 		ModPolicy: channelconfig.AdminsPolicyKey,
 	}
 
-	if consensusTypeKeyValue, ok := configUpdate.WriteSet.Values[channelconfig.ConsensusTypeKey]; ok {
-		consensusType := &ab.ConsensusType{}
-		err = proto.Unmarshal(consensusTypeKeyValue.Value, consensusType)
-		if err != nil {
-			return nil, fmt.Errorf("Error reading unmarshaling consensusType: %s", err)
-		}
-		channelGroup.Values[channelconfig.ConsensusTypeKey] = &cb.ConfigValue{
-			Value:     utils.MarshalOrPanic(channelconfig.ConsensusTypeValue(consensusType.Type, consensusType.Metadata).Value()),
-			ModPolicy: channelconfig.AdminsPolicyKey,
-		}
-		logger.Info("ConsensusTypeKey config value:", consensusType.Type)
+	if configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey] != nil {
+		logger.Info("ConsensusGroupKey in config update WriteSet.")
+		channelGroup.Groups[channelconfig.ConsensusGroupKey] = proto.Clone(configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey]).(*cb.ConfigGroup)
 	}
 
 	// Non-backwards compatible bugfix introduced in v1.1

@@ -90,13 +90,13 @@ type TopLevel struct {
 // Profile encodes orderer/application configuration combinations for the
 // configtxgen tool.
 type Profile struct {
-	Consortium    string                 `yaml:"Consortium"`
-	ConsensusType string                 `yaml:"ConsensusType"`
-	Application   *Application           `yaml:"Application"`
-	Orderer       *Orderer               `yaml:"Orderer"`
-	Consortiums   map[string]*Consortium `yaml:"Consortiums"`
-	Capabilities  map[string]bool        `yaml:"Capabilities"`
-	Policies      map[string]*Policy     `yaml:"Policies"`
+	Consortium   string                 `yaml:"Consortium"`
+	Consensus    *Consensus             `yaml:"Consensus"`
+	Application  *Application           `yaml:"Application"`
+	Orderer      *Orderer               `yaml:"Orderer"`
+	Consortiums  map[string]*Consortium `yaml:"Consortiums"`
+	Capabilities map[string]bool        `yaml:"Capabilities"`
+	Policies     map[string]*Policy     `yaml:"Policies"`
 }
 
 // Policy encodes a channel config policy
@@ -109,6 +109,13 @@ type Policy struct {
 // with each other
 type Consortium struct {
 	Organizations []*Organization `yaml:"Organizations"`
+}
+
+// Add by ztl
+// Consensus used to specify the consensus type and synchronize block connection when creating a channel
+type Consensus struct {
+	ConsensusType    string   `yaml:"ConsensusType"`
+	OrdererAddresses []string `yaml:"OrdererAddresses"`
 }
 
 // Application encodes the application-level configuration needed in config
