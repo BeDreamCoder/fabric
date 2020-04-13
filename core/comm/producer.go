@@ -106,7 +106,7 @@ func (cp *ConnProducer) NewConnection() (*grpc.ClientConn, string, error) {
 			logger.Error("Failed connecting to", currentEndpoint, ", error:", err)
 			continue
 		}
-		logger.Debugf("Connected to %s", currentEndpoint)
+		logger.Infof("ConnProducer NewConnection Connected to %s", currentEndpoint)
 		return conn, currentEndpoint.Endpoint, nil
 	}
 

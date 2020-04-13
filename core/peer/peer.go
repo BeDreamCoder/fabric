@@ -359,7 +359,6 @@ func createChain(
 			return err
 		}
 	}
-	logger.Infof("peer create chain retrieve channel config: %v", bundle.ChannelConfig())
 
 	capabilitiesSupportedOrPanic(bundle)
 
@@ -462,7 +461,15 @@ func createChain(
 		ordererAddressesByOrg[ordererOrg.MSPID()] = ordererOrg.Endpoints()
 	}
 
-	ordererAddresses := bundle.ChannelConfig().OrdererAddresses()
+	var ordererAddresses []string
+	// Add by ztl
+	if cc, ok := bundle.ConsensusConfig(); ok {
+		ordererAddresses = cc.OrdererAddresses()
+		logger.Infof("[channel %s] get orderer addresses from ConsensusConfig: %v", cid, ordererAddresses)
+	} else {
+		ordererAddresses = bundle.ChannelConfig().OrdererAddresses()
+		logger.Infof("[channel %s] get orderer addresses from ChannelConfig: %v", cid, ordererAddresses)
+	}
 	if len(ordererAddresses) == 0 && len(ordererAddressesByOrg) == 0 {
 		return errors.New("no ordering service endpoint provided in configuration block")
 	}

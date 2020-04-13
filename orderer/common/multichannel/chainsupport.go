@@ -63,9 +63,9 @@ func newChainSupport(
 	cs.BlockWriter = newBlockWriter(lastBlock, registrar, cs)
 
 	// Set up the consenter
-	consenterType := ledgerResources.ChannelConfig().ConsensusType()
-	if consenterType == "" {
-		consenterType = ledgerResources.SharedConfig().ConsensusType()
+	consenterType := ledgerResources.SharedConfig().ConsensusType()
+	if consensusConfig, ok := ledgerResources.ConsensusConfig(); ok {
+		consenterType = consensusConfig.ConsensusType()
 	}
 	consenter, ok := consenters[consenterType]
 	if !ok {

@@ -18,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/msp"
 	cb "github.com/hyperledger/fabric/protos/common"
-	ab "github.com/hyperledger/fabric/protos/orderer"
 	"github.com/hyperledger/fabric/protos/orderer/etcdraft"
 	pb "github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protos/utils"
@@ -159,10 +158,6 @@ func NewChannelGroup(conf *genesisconfig.Profile) (*cb.ConfigGroup, error) {
 		addValue(channelGroup, channelconfig.ConsortiumValue(conf.Consortium), channelconfig.AdminsPolicyKey)
 	}
 
-	if conf.ConsensusType != "" {
-		addValue(channelGroup, channelconfig.ConsensusTypeValue(conf.ConsensusType, nil), channelconfig.AdminsPolicyKey)
-	}
-
 	if len(conf.Capabilities) > 0 {
 		addValue(channelGroup, channelconfig.CapabilitiesValue(conf.Capabilities), channelconfig.AdminsPolicyKey)
 	}
@@ -184,6 +179,14 @@ func NewChannelGroup(conf *genesisconfig.Profile) (*cb.ConfigGroup, error) {
 
 	if conf.Consortiums != nil {
 		channelGroup.Groups[channelconfig.ConsortiumsGroupKey], err = NewConsortiumsGroup(conf.Consortiums)
+		if err != nil {
+			return nil, errors.Wrap(err, "could not create consortiums group")
+		}
+	}
+
+	// Add by ztl
+	if conf.Consensus != nil {
+		channelGroup.Groups[channelconfig.ConsensusGroupKey], err = NewConsensusGroup(conf.Consensus)
 		if err != nil {
 			return nil, errors.Wrap(err, "could not create consortiums group")
 		}
@@ -392,6 +395,16 @@ func NewConsortiumsGroup(conf map[string]*genesisconfig.Consortium) (*cb.ConfigG
 	return consortiumsGroup, nil
 }
 
+// Add by ztl
+func NewConsensusGroup(conf *genesisconfig.Consensus) (*cb.ConfigGroup, error) {
+	consensusGroup := cb.NewConfigGroup()
+	addPolicy(consensusGroup, policies.SignaturePolicy(channelconfig.AdminsPolicyKey, cauthdsl.AcceptAllPolicy), channelconfig.AdminsPolicyKey)
+	addValue(consensusGroup, channelconfig.ConsensusTypeValue(conf.ConsensusType, nil), channelconfig.AdminsPolicyKey)
+	addValue(consensusGroup, channelconfig.OrdererAddressesValue(conf.OrdererAddresses), channelconfig.AdminsPolicyKey)
+	consensusGroup.ModPolicy = channelconfig.AdminsPolicyKey
+	return consensusGroup, nil
+}
+
 // NewConsortiums returns a consortiums component of the channel configuration.  Each consortium defines the organizations which may be involved in channel
 // creation, as well as the channel creation policy the orderer checks at channel creation time to authorize the action.  It sets the mod_policy of all
 // elements to "/Channel/Orderer/Admins".
@@ -443,17 +456,6 @@ func NewChannelCreateConfigUpdate(channelID string, conf *genesisconfig.Profile,
 		}),
 	}
 
-	if conf.ConsensusType != "" {
-		updt.ReadSet.Values[channelconfig.ConsensusTypeKey] = &cb.ConfigValue{Version: 0}
-		updt.WriteSet.Values[channelconfig.ConsensusTypeKey] = &cb.ConfigValue{
-			Version: 0,
-			Value: utils.MarshalOrPanic(&ab.ConsensusType{
-				Type:     conf.ConsensusType,
-				Metadata: nil,
-			}),
-		}
-	}
-
 	return updt, nil
 }
 
@@ -472,6 +474,12 @@ func DefaultConfigTemplate(conf *genesisconfig.Profile) (*cb.ConfigGroup, error)
 
 	channelGroup.Groups[channelconfig.ApplicationGroupKey].Values = nil
 	channelGroup.Groups[channelconfig.ApplicationGroupKey].Policies = nil
+
+	// Add by ztl
+	if _, ok := channelGroup.Groups[channelconfig.ConsensusGroupKey]; ok {
+		channelGroup.Groups[channelconfig.ConsensusGroupKey].Values = nil
+		channelGroup.Groups[channelconfig.ConsensusGroupKey].Policies = nil
+	}
 
 	return channelGroup, nil
 }

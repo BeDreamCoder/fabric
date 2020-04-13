@@ -153,7 +153,7 @@ func (cc ConnectionCriteria) toEndpointCriteria() []comm.EndpointCriteria {
 			Endpoint:      endpoint,
 		})
 	}
-
+	logger.Infof("ConnectionCriteria return orderer endpoints:%v", res)
 	return res
 }
 

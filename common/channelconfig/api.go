@@ -69,9 +69,6 @@ type Channel interface {
 
 	// Capabilities defines the capabilities for a channel
 	Capabilities() ChannelCapabilities
-
-	// ConsensusType defines the consensus type for a channel
-	ConsensusType() string
 }
 
 // Consortiums represents the set of consortiums serviced by an ordering service
@@ -242,9 +239,22 @@ type Resources interface {
 	// and whether the Application config exists
 	ApplicationConfig() (Application, bool)
 
+	// Add by ztl
+	// ConsensusConfig returns config.Consensus for the channel and whether the consensus config exists
+	ConsensusConfig() (ChannelConsensus, bool)
+
 	// MSPManager returns the msp.MSPManager for the chain
 	MSPManager() msp.MSPManager
 
 	// ValidateNew should return an error if a new set of configuration resources is incompatible with the current one
 	ValidateNew(resources Resources) error
+}
+// Add by ztl
+// ChannelConsensus represents the consensus config for the channel
+type ChannelConsensus interface {
+	// ConsensusType returns the configured consensus type
+	ConsensusType() string
+
+	// OrdererAddresses returns the list of valid orderer addresses to connect to to invoke Broadcast/Deliver
+	OrdererAddresses() []string
 }

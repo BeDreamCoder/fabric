@@ -161,7 +161,7 @@ func (bc *broadcastClient) connect() error {
 	bc.endpoint = ""
 	bc.mutex.Unlock()
 	conn, endpoint, err := bc.prod.NewConnection()
-	logger.Debug("Connected to", endpoint)
+	logger.Info("BroadcastClient Connected to", endpoint)
 	if err != nil {
 		logger.Error("Failed obtaining connection:", err)
 		return err
