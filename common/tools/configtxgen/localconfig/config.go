@@ -114,8 +114,8 @@ type Consortium struct {
 // Add by ztl
 // Consensus used to specify the consensus type and synchronize block connection when creating a channel
 type Consensus struct {
-	ConsensusType    string             `yaml:"ConsensusType"`
-	OrdererAddresses []string           `yaml:"OrdererAddresses"`
+	ConsensusType    string   `yaml:"ConsensusType"`
+	OrdererAddresses []string `yaml:"OrdererAddresses"`
 	//Capabilities     map[string]bool    `yaml:"Capabilities"`
 	//Policies         map[string]*Policy `yaml:"Policies"`
 }

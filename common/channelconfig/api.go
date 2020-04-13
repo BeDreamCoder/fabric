@@ -249,6 +249,7 @@ type Resources interface {
 	// ValidateNew should return an error if a new set of configuration resources is incompatible with the current one
 	ValidateNew(resources Resources) error
 }
+
 // Add by ztl
 // ChannelConsensus represents the consensus config for the channel
 type ChannelConsensus interface {
