@@ -6,12 +6,14 @@ SPDX-License-Identifier: Apache-2.0
 package stateormdb
 
 import (
+	"sync"
+
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/metrics"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
-	"github.com/hyperledger/fabric/core/ledger/util/couchdb"
+	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version"
 	"github.com/hyperledger/fabric/core/ledger/util/ormdb"
-	"sync"
+	"github.com/spf13/viper"
 )
 
 var logger = flogging.MustGetLogger("stateormdb")
@@ -26,11 +28,12 @@ type VersionedDBProvider struct {
 
 // VersionedDB implements VersionedDB interface
 type VersionedDB struct {
-	ormDBInstance *ormdb.ORMDBInstance
-	metadataDB    *ormdb.ORMDatabase            // A database per channel to store metadata.
-	chainName     string                        // The name of the chain/channel.
-	namespaceDBs  map[string]*ormdb.ORMDatabase // One database per deployed chaincode.
-	rwmutex       sync.RWMutex
+	ormDBInstance  *ormdb.ORMDBInstance
+	metadataDB     *ormdb.ORMDatabase            // A database per channel to store metadata.
+	chainName      string                        // The name of the chain/channel.
+	namespaceDBs   map[string]*ormdb.ORMDatabase // One database per deployed chaincode.
+	mux            sync.RWMutex
+	lsccStateCache *statedb.LsccStateCache
 }
 
 // NewVersionedDBProvider instantiates VersionedDBProvider
@@ -61,23 +64,74 @@ func (provider *VersionedDBProvider) GetDBHandle(dbName string) (statedb.Version
 
 // newVersionedDB constructs an instance of VersionedDB
 func newVersionedDB(ormDBInstance *ormdb.ORMDBInstance, dbName string) (*VersionedDB, error) {
-	// CreateCouchDatabase creates a CouchDB database object, as well as the underlying database if it does not exist
 	chainName := dbName
 	dbName = dbName + "_"
 
-	metadataDB, err := ormdb.NewORMDBInstance()CreateCouchDatabase(ormDBInstance, dbName)
+	dbType := viper.GetString("ledger.state.stateDatabase")
+	metadataDB, err := ormdb.CreateORMDatabase(ormDBInstance, dbName, dbType)
 	if err != nil {
 		return nil, err
 	}
-	namespaceDBMap := make(map[string]*couchdb.CouchDatabase)
+	namespaceDBMap := make(map[string]*ormdb.ORMDatabase)
 	return &VersionedDB{
-		couchInstance:      couchInstance,
-		metadataDB:         metadataDB,
-		chainName:          chainName,
-		namespaceDBs:       namespaceDBMap,
-		committedDataCache: newVersionCache(),
-		lsccStateCache: &lsccStateCache{
-			cache: make(map[string]*statedb.VersionedValue),
+		ormDBInstance: ormDBInstance,
+		metadataDB:    metadataDB,
+		chainName:     chainName,
+		namespaceDBs:  namespaceDBMap,
+		lsccStateCache: &statedb.LsccStateCache{
+			Cache: make(map[string]*statedb.VersionedValue),
 		},
 	}, nil
+}
+
+func (v *VersionedDB) GetState(namespace string, key string) (*statedb.VersionedValue, error) {
+	panic("implement me")
+}
+
+func (v *VersionedDB) GetVersion(namespace string, key string) (*version.Height, error) {
+	panic("implement me")
+}
+
+func (v *VersionedDB) GetStateMultipleKeys(namespace string, keys []string) ([]*statedb.VersionedValue, error) {
+	panic("implement me")
+}
+
+func (v *VersionedDB) GetStateRangeScanIterator(namespace string, startKey string, endKey string) (statedb.ResultsIterator, error) {
+	panic("implement me")
+}
+
+func (v *VersionedDB) GetStateRangeScanIteratorWithMetadata(namespace string, startKey string, endKey string, metadata map[string]interface{}) (statedb.QueryResultsIterator, error) {
+	panic("implement me")
+}
+
+func (v *VersionedDB) ExecuteQuery(namespace, query string) (statedb.ResultsIterator, error) {
+	panic("implement me")
+}
+
+func (v *VersionedDB) ExecuteQueryWithMetadata(namespace, query string, metadata map[string]interface{}) (statedb.QueryResultsIterator, error) {
+	panic("implement me")
+}
+
+func (v *VersionedDB) ApplyUpdates(batch *statedb.UpdateBatch, height *version.Height) error {
+	panic("implement me")
+}
+
+func (v *VersionedDB) GetLatestSavePoint() (*version.Height, error) {
+	panic("implement me")
+}
+
+func (v *VersionedDB) ValidateKeyValue(key string, value []byte) error {
+	panic("implement me")
+}
+
+func (v *VersionedDB) BytesKeySupported() bool {
+	panic("implement me")
+}
+
+func (v *VersionedDB) Open() error {
+	panic("implement me")
+}
+
+func (v *VersionedDB) Close() {
+	panic("implement me")
 }

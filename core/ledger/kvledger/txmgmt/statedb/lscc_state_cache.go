@@ -1,8 +1,9 @@
 package statedb
 
 import (
-	"github.com/hyperledger/fabric/common/flogging"
 	"sync"
+
+	"github.com/hyperledger/fabric/common/flogging"
 )
 
 var logger = flogging.MustGetLogger("lsccstatecache")

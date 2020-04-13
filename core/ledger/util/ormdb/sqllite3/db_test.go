@@ -1,15 +1,22 @@
+/*
+Copyright Zhigui.com. All Rights Reserved.
+SPDX-License-Identifier: Apache-2.0
+*/
+
 package sqllite3
 
 import (
-	"github.com/hyperledger/fabric/core/ledger/util/ormdb"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/hyperledger/fabric/core/ledger/util/ormdb/config"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewSqlite3DB(t *testing.T) {
-	conf := &ormdb.ORMDBConfig{Sqlite3Config: &ormdb.Sqlite3Config{Path: "/tmp"}}
-	db, err := Open(conf, "test")
+	conf := &config.ORMDBConfig{Sqlite3Config: &config.Sqlite3Config{Path: "/tmp/ormdb"}}
+	db, err := CreateIfNotExistAndOpen(conf, "test")
 	assert.NoError(t, err)
 	assert.NotNil(t, db)
-	_ = Drop(db, conf, "test")
+	err = DropAndDelete(db, conf, "test")
+	assert.NoError(t, err)
 }
