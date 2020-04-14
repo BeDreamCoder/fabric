@@ -378,6 +378,7 @@ Profiles:
 
     SampleMultiConsensus:
         <<: *ChannelDefaults
+        ConsensusType: etcdraft
         Capabilities:
             <<: *ChannelCapabilities
         Orderer:
