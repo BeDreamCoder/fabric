@@ -328,18 +328,12 @@ func (dt *DefaultTemplator) NewChannelConfig(envConfigUpdate *cb.Envelope) (chan
 	}
 
 	// Add by ztl
-	if systemChannelGroup.Groups[channelconfig.ConsensusGroupKey] != nil {
-		channelGroup.Groups[channelconfig.ConsensusGroupKey] = proto.Clone(systemChannelGroup.Groups[channelconfig.ConsensusGroupKey]).(*cb.ConfigGroup)
-	} else if configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey] != nil {
-		consensusGroup := cb.NewConfigGroup()
-		//for key, policy := range configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey].Policies {
-		//	consensusGroup.Policies[key] = proto.Clone(policy).(*cb.ConfigPolicy)
-		//}
-		//for key, value := range configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey].Values {
-		//	consensusGroup.Values[key] = proto.Clone(value).(*cb.ConfigValue)
-		//}
-		consensusGroup.ModPolicy = channelconfig.AdminsPolicyKey
-		channelGroup.Groups[channelconfig.ConsensusGroupKey] = consensusGroup
+	if value, ok := configUpdate.WriteSet.Values[channelconfig.ConsensusTypeKey]; ok {
+		channelGroup.Values[channelconfig.ConsensusTypeKey] = proto.Clone(value).(*cb.ConfigValue)
+	}
+	// Overrides system channel orderer addresses
+	if value, ok := configUpdate.WriteSet.Values[channelconfig.OrdererAddressesKey]; ok {
+		channelGroup.Values[channelconfig.OrdererAddressesKey] = proto.Clone(value).(*cb.ConfigValue)
 	}
 
 	// Non-backwards compatible bugfix introduced in v1.1

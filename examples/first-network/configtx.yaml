@@ -307,6 +307,14 @@ Orderer: &OrdererDefaults
 #
 ################################################################################
 Channel: &ChannelDefaults
+    # Consensus Type: The orderer implementation to start for the channel
+    # Available types are "solo","kafka"  and "etcdraft"
+    ConsensusType: solo
+
+    # OrdererAddresses: The list of valid orderer addresses to connect to to invoke Broadcast/Deliver
+    OrdererAddresses:
+        - orderer.example.com:7050
+
     # Policies defines the set of policies at this level of the config tree
     # For Channel policies, their canonical path is
     #   /Channel/<PolicyName>
@@ -342,10 +350,6 @@ Profiles:
 
     OneOrgChannel:
         Consortium: SingleConsortium
-        Consensus:
-            ConsensusType: solo
-            OrdererAddresses:
-                - orderer.example.com:7050
         <<: *ChannelDefaults
         Application:
             <<: *ApplicationDefaults
@@ -357,14 +361,13 @@ Profiles:
     TwoOrgsChannel:
         Consortium: SampleConsortium
         <<: *ChannelDefaults
-        Consensus:
-            ConsensusType: etcdraft
-            OrdererAddresses:
-                - orderer.example.com:7050
-                - orderer2.example.com:7050
-                - orderer3.example.com:7050
-                - orderer4.example.com:7050
-                - orderer5.example.com:7050
+        ConsensusType: etcdraft
+        OrdererAddresses:
+            - orderer.example.com:7050
+            - orderer2.example.com:7050
+            - orderer3.example.com:7050
+            - orderer4.example.com:7050
+            - orderer5.example.com:7050
         Application:
             <<: *ApplicationDefaults
             Organizations:

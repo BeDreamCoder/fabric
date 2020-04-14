@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/msp"
 	cb "github.com/hyperledger/fabric/protos/common"
+	ab "github.com/hyperledger/fabric/protos/orderer"
 	"github.com/pkg/errors"
 )
 
@@ -58,6 +59,7 @@ type ChannelValues interface {
 type ChannelProtos struct {
 	HashingAlgorithm          *cb.HashingAlgorithm
 	BlockDataHashingStructure *cb.BlockDataHashingStructure
+	ConsensusType             *ab.ConsensusType
 	OrdererAddresses          *cb.OrdererAddresses
 	Consortium                *cb.Consortium
 	Capabilities              *cb.Capabilities
@@ -74,7 +76,6 @@ type ChannelConfig struct {
 	appConfig         *ApplicationConfig
 	ordererConfig     *OrdererConfig
 	consortiumsConfig *ConsortiumsConfig
-	consensusConfig   *ConsensusConfig // Add by ztl
 }
 
 // NewChannelConfig creates a new ChannelConfig
@@ -104,8 +105,6 @@ func NewChannelConfig(channelGroup *cb.ConfigGroup) (*ChannelConfig, error) {
 			cc.ordererConfig, err = NewOrdererConfig(group, mspConfigHandler, capabilities)
 		case ConsortiumsGroupKey:
 			cc.consortiumsConfig, err = NewConsortiumsConfig(group, mspConfigHandler)
-		case ConsensusGroupKey:
-			cc.consensusConfig, err = NewConsensusConfig(group)
 		default:
 			return nil, fmt.Errorf("Disallowed channel group: %s", group)
 		}
@@ -141,12 +140,6 @@ func (cc *ChannelConfig) ConsortiumsConfig() *ConsortiumsConfig {
 	return cc.consortiumsConfig
 }
 
-// Add by ztl
-// ConsensusConfig returns the consensus config associated with this channel create
-func (cc *ChannelConfig) ConsensusConfig() *ConsensusConfig {
-	return cc.consensusConfig
-}
-
 // HashingAlgorithm returns a function pointer to the chain hashing algorihtm
 func (cc *ChannelConfig) HashingAlgorithm() func(input []byte) []byte {
 	return cc.hashingAlgorithm
@@ -165,6 +158,12 @@ func (cc *ChannelConfig) OrdererAddresses() []string {
 // ConsortiumName returns the name of the consortium this channel was created under
 func (cc *ChannelConfig) ConsortiumName() string {
 	return cc.protos.Consortium.Name
+}
+
+// Add by ztl
+// ConsensusType returns the tyoe of the consensus this channel was created under
+func (cc *ChannelConfig) ConsensusType() string {
+	return cc.protos.ConsensusType.Type
 }
 
 // Capabilities returns information about the available capabilities for this channel

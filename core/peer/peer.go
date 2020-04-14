@@ -461,18 +461,12 @@ func createChain(
 		ordererAddressesByOrg[ordererOrg.MSPID()] = ordererOrg.Endpoints()
 	}
 
-	var ordererAddresses []string
 	// Add by ztl
-	if cc, ok := bundle.ConsensusConfig(); ok {
-		ordererAddresses = cc.OrdererAddresses()
-		logger.Infof("[channel %s] get orderer addresses from ConsensusConfig: %v", cid, ordererAddresses)
-	} else {
-		ordererAddresses = bundle.ChannelConfig().OrdererAddresses()
-		logger.Infof("[channel %s] get orderer addresses from ChannelConfig: %v", cid, ordererAddresses)
-	}
+	ordererAddresses := bundle.ChannelConfig().OrdererAddresses()
 	if len(ordererAddresses) == 0 && len(ordererAddressesByOrg) == 0 {
 		return errors.New("no ordering service endpoint provided in configuration block")
 	}
+	logger.Infof("[channel %s] get orderer addresses from ChannelConfig: %v", cid, ordererAddresses)
 
 	ordererAddressOverrides, err := GetOrdererAddressOverrides()
 	if err != nil {
