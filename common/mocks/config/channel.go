@@ -34,6 +34,8 @@ type Channel struct {
 	BlockDataHashingStructureWidthVal uint32
 	// OrdererAddressesVal is returned as the result of OrdererAddresses()
 	OrdererAddressesVal []string
+	// ConsensusTypeVal is returned as the result of ConsensusType()
+	ConsensusTypeVal string
 	// CapabilitiesVal is returned as the result of Capabilities()
 	CapabilitiesVal channelconfig.ChannelCapabilities
 }
@@ -54,6 +56,11 @@ func (scm *Channel) BlockDataHashingStructureWidth() uint32 {
 // OrdererAddresses returns the OrdererAddressesVal
 func (scm *Channel) OrdererAddresses() []string {
 	return scm.OrdererAddressesVal
+}
+
+// ConsensusType defines the consensus type for a channel
+func (scm *Channel) ConsensusType() string {
+	return scm.ConsensusTypeVal
 }
 
 // Capabilities returns CapabilitiesVal
