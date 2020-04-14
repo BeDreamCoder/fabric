@@ -32,7 +32,6 @@ func computeDeltaSet(readSet, writeSet map[string]comparable) map[string]compara
 	result := make(map[string]comparable)
 	for key, value := range writeSet {
 		readVal, ok := readSet[key]
-		logger.Infof("computeDeltaSet key: %s, ok: %v, readVer: %d, writeVer: %d", key, ok, readVal.version(), value.version())
 		if ok && readVal.version() == value.version() {
 			continue
 		}
@@ -83,7 +82,7 @@ func (vi *ValidatorImpl) verifyDeltaSet(deltaSet map[string]comparable, signedDa
 
 			continue
 		}
-		logger.Infof("verifyDeltaSet, key: %s, v: %d, e:% d", key, value.version(), existing.version())
+
 		if value.version() != existing.version()+1 {
 			return errors.Errorf("attempt to set key %s to version %d, but key is at version %d", key, value.version(), existing.version())
 		}
