@@ -2,6 +2,6 @@
 #/channel-artifacts/*.block
 #/channel-artifacts/*.json
 #/crypto-config/*
-/docker-compose-e2e.yaml
+#/docker-compose-e2e.yaml
 /ledgers
 /ledgers-backup

@@ -273,7 +273,6 @@ function upgradeNetwork() {
 
 # Tear down running network
 function networkDown() {
-  # stop org3 containers also in addition to org1 and org2, in case we were running sample to add org3
   # stop kafka and zookeeper containers in case we're running with kafka consensus-type
   docker-compose -f $COMPOSE_FILE -f $COMPOSE_FILE_COUCH -f $COMPOSE_FILE_KAFKA -f $COMPOSE_FILE_RAFT2 -f $COMPOSE_FILE_CA down --volumes --remove-orphans
 
@@ -443,11 +442,28 @@ function generateChannelArtifacts() {
   echo "### Generating channel configuration transaction 'channel.tx' ###"
   echo "#################################################################"
   set -x
-  configtxgen -profile TwoOrgsChannel -outputCreateChannelTx ./channel-artifacts/channel.tx -channelID $CHANNEL_NAME
+  configtxgen -profile EtcdraftChannel -outputCreateChannelTx ./channel-artifacts/channel.tx -channelID $CHANNEL_NAME
   res=$?
   set +x
   if [ $res -ne 0 ]; then
-    echo "Failed to generate channel configuration transaction..."
+    echo "Failed to generate etcdraft channel configuration transaction..."
+    exit 1
+  fi
+  set -x
+  configtxgen -profile SoloChannel -outputCreateChannelTx ./channel-artifacts/solochannel.tx -channelID solochannel
+  res=$?
+  set +x
+  if [ $res -ne 0 ]; then
+    echo "Failed to generate solo channel configuration transaction..."
+    exit 1
+  fi
+
+  set -x
+  configtxgen -profile KafkaChannel -outputCreateChannelTx ./channel-artifacts/kafkachannel.tx -channelID kafkachannel
+  res=$?
+  set +x
+  if [ $res -ne 0 ]; then
+    echo "Failed to generate kafka channel configuration transaction..."
     exit 1
   fi
 
@@ -456,11 +472,28 @@ function generateChannelArtifacts() {
   echo "#######    Generating anchor peer update for Org1MSP   ##########"
   echo "#################################################################"
   set -x
-  configtxgen -profile TwoOrgsChannel -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org1MSP
+  configtxgen -profile EtcdraftChannel -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org1MSP
   res=$?
   set +x
   if [ $res -ne 0 ]; then
     echo "Failed to generate anchor peer update for Org1MSP..."
+    exit 1
+  fi
+
+  set -x
+  configtxgen -profile SoloChannel -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchorsForSolo.tx -channelID solochannel -asOrg Org1MSP
+  res=$?
+  set +x
+  if [ $res -ne 0 ]; then
+    echo "Failed to generate anchor peer update for Solo Org1MSP..."
+    exit 1
+  fi
+  set -x
+  configtxgen -profile KafkaChannel -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchorsForKafka.tx -channelID kafkachannel -asOrg Org1MSP
+  res=$?
+  set +x
+  if [ $res -ne 0 ]; then
+    echo "Failed to generate anchor peer update for Kafka Org1MSP..."
     exit 1
   fi
 
@@ -469,12 +502,20 @@ function generateChannelArtifacts() {
   echo "#######    Generating anchor peer update for Org2MSP   ##########"
   echo "#################################################################"
   set -x
-  configtxgen -profile TwoOrgsChannel -outputAnchorPeersUpdate \
-    ./channel-artifacts/Org2MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org2MSP
+  configtxgen -profile EtcdraftChannel -outputAnchorPeersUpdate ./channel-artifacts/Org2MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org2MSP
   res=$?
   set +x
   if [ $res -ne 0 ]; then
     echo "Failed to generate anchor peer update for Org2MSP..."
+    exit 1
+  fi
+
+  set -x
+  configtxgen -profile KafkaChannel -outputAnchorPeersUpdate ./channel-artifacts/Org2MSPanchorsForKafka.tx -channelID kafkachannel -asOrg Org2MSP
+  res=$?
+  set +x
+  if [ $res -ne 0 ]; then
+    echo "Failed to generate anchor peer update for Kafka Org2MSP..."
     exit 1
   fi
   echo

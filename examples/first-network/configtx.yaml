@@ -348,7 +348,7 @@ Channel: &ChannelDefaults
 ################################################################################
 Profiles:
 
-    OneOrgChannel:
+    SoloChannel:
         Consortium: SingleConsortium
         <<: *ChannelDefaults
         Application:
@@ -358,7 +358,19 @@ Profiles:
             Capabilities:
                 <<: *ApplicationCapabilities
 
-    TwoOrgsChannel:
+    KafkaChannel:
+        Consortium: SampleConsortium
+        <<: *ChannelDefaults
+        ConsensusType: kafka
+        Application:
+            <<: *ApplicationDefaults
+            Organizations:
+                - *Org1
+                - *Org2
+            Capabilities:
+                <<: *ApplicationCapabilities
+
+    EtcdraftChannel:
         Consortium: SampleConsortium
         <<: *ChannelDefaults
         ConsensusType: etcdraft
@@ -375,6 +387,41 @@ Profiles:
                 - *Org2
             Capabilities:
                 <<: *ApplicationCapabilities
+
+    TwoOrgsOrdererGenesis:
+        <<: *ChannelDefaults
+        Orderer:
+            <<: *OrdererDefaults
+            Organizations:
+                - *OrdererOrg
+            Capabilities:
+                <<: *OrdererCapabilities
+        Consortiums:
+            SampleConsortium:
+                Organizations:
+                    - *Org1
+                    - *Org2
+
+    SampleDevModeKafka:
+        <<: *ChannelDefaults
+        Capabilities:
+            <<: *ChannelCapabilities
+        Orderer:
+            <<: *OrdererDefaults
+            OrdererType: kafka
+            Organizations:
+                - *OrdererOrg
+            Capabilities:
+                <<: *OrdererCapabilities
+        Application:
+            <<: *ApplicationDefaults
+            Organizations:
+                -   <<: *OrdererOrg
+        Consortiums:
+            SampleConsortium:
+                Organizations:
+                    - *Org1
+                    - *Org2
 
     SampleMultiConsensus:
         <<: *ChannelDefaults
