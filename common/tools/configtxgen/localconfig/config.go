@@ -116,8 +116,7 @@ type Consortium struct {
 type Consensus struct {
 	ConsensusType    string             `yaml:"ConsensusType"`
 	OrdererAddresses []string           `yaml:"OrdererAddresses"`
-	//Capabilities     map[string]bool    `yaml:"Capabilities"`
-	//Policies         map[string]*Policy `yaml:"Policies"`
+	Policies         map[string]*Policy `yaml:"Policies"`
 }
 
 // Application encodes the application-level configuration needed in config
