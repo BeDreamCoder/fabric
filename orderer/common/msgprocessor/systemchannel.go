@@ -335,9 +335,9 @@ func (dt *DefaultTemplator) NewChannelConfig(envConfigUpdate *cb.Envelope) (chan
 		for key, policy := range configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey].Policies {
 			consensusGroup.Policies[key] = proto.Clone(policy).(*cb.ConfigPolicy)
 		}
-		for key, value := range configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey].Values {
-			consensusGroup.Values[key] = proto.Clone(value).(*cb.ConfigValue)
-		}
+		//for key, value := range configUpdate.WriteSet.Groups[channelconfig.ConsensusGroupKey].Values {
+		//	consensusGroup.Values[key] = proto.Clone(value).(*cb.ConfigValue)
+		//}
 		consensusGroup.ModPolicy = channelconfig.AdminsPolicyKey
 		channelGroup.Groups[channelconfig.ConsensusGroupKey] = consensusGroup
 	}

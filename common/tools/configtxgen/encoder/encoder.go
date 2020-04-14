@@ -486,7 +486,7 @@ func DefaultConfigTemplate(conf *genesisconfig.Profile) (*cb.ConfigGroup, error)
 	// Add by ztl
 	if _, ok := channelGroup.Groups[channelconfig.ConsensusGroupKey]; ok {
 		channelGroup.Groups[channelconfig.ConsensusGroupKey].Values = nil
-		channelGroup.Groups[channelconfig.ConsensusGroupKey].Policies = nil
+		//channelGroup.Groups[channelconfig.ConsensusGroupKey].Policies = nil
 	}
 
 	return channelGroup, nil
