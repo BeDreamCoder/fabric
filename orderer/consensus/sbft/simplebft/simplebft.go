@@ -24,7 +24,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/orderer/consensus"
-	"github.com/hyperledger/fabric/orderer/consensus/sbft/storage"
 	sb "github.com/hyperledger/fabric/protos/orderer/sbft"
 	"github.com/op/go-logging"
 )
@@ -67,7 +66,6 @@ type Canceller interface {
 type SBFT struct {
 	sys     System
 	support consensus.ConsenterSupport
-	storage *storage.SbftStorage
 
 	config            sb.Options
 	id                uint64
