@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/hyperledger/fabric/orderer/consensus/sbft"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -677,6 +678,7 @@ func initializeMultichannelRegistrar(
 	// Note, we pass a 'nil' channel here, we could pass a channel that
 	// closes if we wished to cleanup this routine on exit.
 	go kafkaMetrics.PollGoMetricsUntilStop(time.Minute, nil)
+	consenters["sbft"] = sbft.New(conf, srvConf)
 
 	registrar.Initialize(consenters)
 	return registrar

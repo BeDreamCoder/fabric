@@ -173,6 +173,7 @@ func (h *Handler) Handle(ctx context.Context, srv *Server) error {
 
 		err = srv.SendStatusResponse(status)
 		if status != cb.Status_SUCCESS {
+			logger.Warningf("Error sending to %s: %s, status: %s", addr, err, status)
 			return err
 		}
 		if err != nil {

@@ -21,6 +21,7 @@ import (
 	cb "github.com/hyperledger/fabric/protos/common"
 	ab "github.com/hyperledger/fabric/protos/orderer"
 	"github.com/hyperledger/fabric/protos/orderer/etcdraft"
+	"github.com/hyperledger/fabric/protos/orderer/sbft"
 	pb "github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protos/utils"
 	"github.com/pkg/errors"
@@ -40,6 +41,8 @@ const (
 	ConsensusTypeSolo = "solo"
 	// ConsensusTypeKafka identifies the Kafka-based consensus implementation.
 	ConsensusTypeKafka = "kafka"
+	// ConsensusTypeSbft identifies the sbft consensus implementation.
+	ConsensusTypeSbft = "sbft"
 
 	// BlockValidationPolicyKey TODO
 	BlockValidationPolicyKey = "BlockValidation"
@@ -229,6 +232,7 @@ func NewOrdererGroup(conf *genesisconfig.Orderer) (*cb.ConfigGroup, error) {
 	case ConsensusTypeSolo:
 	case ConsensusTypeKafka:
 	case etcdraft.TypeKey:
+	case ConsensusTypeSbft:
 		// Add by ztl
 		if len(conf.Kafka.Brokers) > 0 {
 			addValue(ordererGroup, channelconfig.KafkaBrokersValue(conf.Kafka.Brokers), channelconfig.AdminsPolicyKey)
@@ -236,6 +240,11 @@ func NewOrdererGroup(conf *genesisconfig.Orderer) (*cb.ConfigGroup, error) {
 		if conf.EtcdRaft != nil {
 			if consensusMetadata, err = etcdraft.Marshal(conf.EtcdRaft); err != nil {
 				return nil, errors.Errorf("cannot marshal metadata for orderer type %s: %s", etcdraft.TypeKey, err)
+			}
+		}
+		if conf.Sbft != nil {
+			if consensusMetadata, err = sbft.Marshal(conf.Sbft); err != nil {
+				return nil, errors.Errorf("cannot marshal metadata for orderer type %s: %v", ConsensusTypeSbft, err)
 			}
 		}
 	default:

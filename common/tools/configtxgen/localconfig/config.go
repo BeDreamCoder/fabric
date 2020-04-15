@@ -18,6 +18,7 @@ import (
 	cf "github.com/hyperledger/fabric/core/config"
 	"github.com/hyperledger/fabric/msp"
 	"github.com/hyperledger/fabric/protos/orderer/etcdraft"
+	"github.com/hyperledger/fabric/protos/orderer/sbft"
 	"github.com/spf13/viper"
 )
 
@@ -164,6 +165,7 @@ type Orderer struct {
 	BatchSize     BatchSize                `yaml:"BatchSize"`
 	Kafka         Kafka                    `yaml:"Kafka"`
 	EtcdRaft      *etcdraft.ConfigMetadata `yaml:"EtcdRaft"`
+	Sbft          *sbft.ConfigMetadata     `yaml:"Sbft"`
 	Organizations []*Organization          `yaml:"Organizations"`
 	MaxChannels   uint64                   `yaml:"MaxChannels"`
 	Capabilities  map[string]bool          `yaml:"Capabilities"`
@@ -202,6 +204,13 @@ var genesisDefaults = TopLevel{
 				HeartbeatTick:        1,
 				MaxInflightBlocks:    5,
 				SnapshotIntervalSize: 20 * 1024 * 1024, // 20 MB
+			},
+		},
+		Sbft: &sbft.ConfigMetadata{
+			Options: &sbft.Options{
+				N:                  1,
+				F:                  0,
+				RequestTimeoutNsec: 1000000000,
 			},
 		},
 	},
@@ -459,6 +468,53 @@ loop:
 			clientCertPath := string(c.GetClientTlsCert())
 			cf.TranslatePathInPlace(configDir, &clientCertPath)
 			c.ClientTlsCert = []byte(clientCertPath)
+			serverCertPath := string(c.GetServerTlsCert())
+			cf.TranslatePathInPlace(configDir, &serverCertPath)
+			c.ServerTlsCert = []byte(serverCertPath)
+		}
+	case "sbft":
+		if ord.Sbft == nil {
+			logger.Panic("sbft configuration missing")
+		}
+		if ord.Sbft.Options == nil {
+			logger.Infof("Orderer.Sbft.SbftShared unset, setting to %v", genesisDefaults.Orderer.Sbft.Options)
+			ord.Sbft.Options = genesisDefaults.Orderer.Sbft.Options
+		}
+	sbft_loop:
+		for {
+			switch {
+			case ord.Sbft.Options.N == 0:
+				logger.Infof("Orderer.Sbft.SbftShared.N unset, setting to %v", genesisDefaults.Orderer.Sbft.Options.N)
+				ord.Sbft.Options.N = genesisDefaults.Orderer.Sbft.Options.N
+
+			case ord.Sbft.Options.RequestTimeoutNsec == 0:
+				logger.Infof("Orderer.EtcdRaft.SbftShared.RequestTimeoutNsec unset, setting to %v", genesisDefaults.Orderer.Sbft.Options.RequestTimeoutNsec)
+				ord.Sbft.Options.RequestTimeoutNsec = genesisDefaults.Orderer.Sbft.Options.RequestTimeoutNsec
+
+			case len(ord.Sbft.Consenters) == 0:
+				logger.Panic("Sbft configuration did not specify any consenter")
+
+			default:
+				break sbft_loop
+			}
+		}
+
+		for _, c := range ord.Sbft.GetConsenters() {
+			if c.Host == "" {
+				logger.Panic("consenter info in sbft configuration did not specify host")
+			}
+			if c.Port == 0 {
+				logger.Panic("consenter info in sbft configuration did not specify port")
+			}
+			if c.ClientSignCert == nil {
+				logger.Panic("consenter info in sbft configuration did not specify client Sign cert")
+			}
+			if c.ServerTlsCert == nil {
+				logger.Panic("consenter info in sbft configuration did not specify server TLS cert")
+			}
+			clientCertPath := string(c.GetClientSignCert())
+			cf.TranslatePathInPlace(configDir, &clientCertPath)
+			c.ClientSignCert = []byte(clientCertPath)
 			serverCertPath := string(c.GetServerTlsCert())
 			cf.TranslatePathInPlace(configDir, &serverCertPath)
 			c.ServerTlsCert = []byte(serverCertPath)

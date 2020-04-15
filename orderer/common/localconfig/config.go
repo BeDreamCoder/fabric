@@ -36,6 +36,9 @@ type TopLevel struct {
 	Consensus  interface{}
 	Operations Operations
 	Metrics    Metrics
+	// use by sbft
+	Genesis   Genesis
+	SbftLocal SbftLocal
 }
 
 // General contains config which should be common among all orderer types.
@@ -210,6 +213,33 @@ type Statsd struct {
 	Prefix        string
 }
 
+// Genesis is a deprecated structure which was used to put
+// values into the genesis block, but this is now handled elsewhere.
+// SBFT did not reference these values via the genesis block however
+// so it is being left here for backwards compatibility purposes.
+type Genesis struct {
+	DeprecatedBatchTimeout time.Duration
+	DeprecatedBatchSize    uint32
+	SbftShared             SbftShared
+}
+
+// SbftLocal contains configuration for the SBFT peer/replica.
+type SbftLocal struct {
+	PeerCommAddr string
+	CertFile     string
+	KeyFile      string
+	WALDir       string
+	SnapDir      string
+}
+
+// SbftShared contains config for the SBFT network.
+type SbftShared struct {
+	N                  uint64
+	F                  uint64
+	RequestTimeoutNsec uint64
+	Peers              map[string]string // Address to Cert mapping
+}
+
 // Defaults carries the default orderer configuration values.
 var Defaults = TopLevel{
 	General: General{
@@ -290,6 +320,21 @@ var Defaults = TopLevel{
 	},
 	Metrics: Metrics{
 		Provider: "disabled",
+	},
+	Genesis: Genesis{
+		SbftShared: SbftShared{
+			N:                  1,
+			F:                  0,
+			RequestTimeoutNsec: uint64(time.Second.Nanoseconds()),
+			Peers:              map[string]string{":7050": "sbft/testdata/cert1.pem"},
+		},
+	},
+	SbftLocal: SbftLocal{
+		PeerCommAddr: ":6101",
+		CertFile:     "sbft/testdata/cert1.pem",
+		KeyFile:      "sbft/testdata/key.pem",
+		WALDir:       "/var/hyperledger/production/orderer/sbft/wal",
+		SnapDir:      "/var/hyperledger/production/orderer/sbft/snapshot",
 	},
 }
 
