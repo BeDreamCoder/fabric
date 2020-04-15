@@ -129,13 +129,11 @@ type chainImpl struct {
 func (chain *chainImpl) Errored() <-chan struct{} {
 	select {
 	case <-chain.startChan:
-		logger.Warningf("[channel: %s] return the errorChain", chain.ChainID())
 		return chain.errorChan
 	default:
 		// While the consenter is starting, always return an error
 		dummyError := make(chan struct{})
 		close(dummyError)
-		logger.Warningf("[channel: %s] return dummy error", chain.ChainID())
 		return dummyError
 	}
 }

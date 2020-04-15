@@ -230,10 +230,7 @@ func (r *Registrar) BroadcastChannelSupport(msg *cb.Envelope) (*cb.ChannelHeader
 	cs := r.GetChain(chdr.ChannelId)
 	// New channel creation
 	if cs == nil {
-		logger.Infof("BroadcastChannelSupport GetChain: %s failed", chdr.ChannelId)
 		cs = r.systemChannel
-	} else {
-		logger.Infof("BroadcastChannelSupport GetChain: %s", chdr.ChannelId)
 	}
 
 	isConfig := false
@@ -241,11 +238,9 @@ func (r *Registrar) BroadcastChannelSupport(msg *cb.Envelope) (*cb.ChannelHeader
 	case msgprocessor.ConfigUpdateMsg:
 		isConfig = true
 	case msgprocessor.ConfigMsg:
-		logger.Infof("BroadcastChannelSupport channelId: %s, ConfigMsg", chdr.ChannelId)
 		return chdr, false, nil, errors.New("message is of type that cannot be processed directly")
 	default:
 	}
-	logger.Infof("BroadcastChannelSupport channelId: %s, ConfigUpdateMsg", chdr.ChannelId)
 
 	return chdr, isConfig, cs, nil
 }
