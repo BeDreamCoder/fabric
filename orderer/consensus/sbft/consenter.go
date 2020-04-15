@@ -17,11 +17,13 @@ limitations under the License.
 package sbft
 
 import (
+	"strconv"
+	"sync"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/hyperledger/fabric/core/comm"
 	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/hyperledger/fabric/orderer/consensus"
-	"github.com/hyperledger/fabric/orderer/consensus/migration"
 	"github.com/hyperledger/fabric/orderer/consensus/sbft/backend"
 	"github.com/hyperledger/fabric/orderer/consensus/sbft/connection"
 	"github.com/hyperledger/fabric/orderer/consensus/sbft/persist"
@@ -30,8 +32,6 @@ import (
 	sb "github.com/hyperledger/fabric/protos/orderer/sbft"
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
-	"strconv"
-	"sync"
 )
 
 type consensusStack struct {
@@ -41,6 +41,7 @@ type consensusStack struct {
 
 var logger = logging.MustGetLogger("orderer/consensus/sbft")
 var once sync.Once
+
 // Consenter interface implementation for new main application
 type consenter struct {
 	cert            []byte
@@ -52,10 +53,9 @@ type consenter struct {
 }
 
 type chain struct {
-	chainID         string
-	exitChan        chan struct{}
-	consensusStack  *consensusStack
-	migrationStatus migration.Status
+	chainID        string
+	exitChan       chan struct{}
+	consensusStack *consensusStack
 }
 
 // New creates a new consenter for the SBFT consensus scheme.
@@ -102,10 +102,9 @@ func (sbft *consenter) HandleChain(support consensus.ConsenterSupport, metadata 
 	sbft.sbftPeers[support.ChainID()] = initSbftPeer(sbft, support)
 
 	return &chain{
-		chainID:         support.ChainID(),
-		exitChan:        make(chan struct{}),
-		consensusStack:  sbft.consensusStack,
-		migrationStatus: migration.NewStatusStepper(support.IsSystemChannel(), support.ChainID()), // Needed by consensus-type migration
+		chainID:        support.ChainID(),
+		exitChan:       make(chan struct{}),
+		consensusStack: sbft.consensusStack,
 	}, nil
 }
 
@@ -179,8 +178,4 @@ func (ch *chain) Configure(config *cb.Envelope, configSeq uint64) error {
 // Errored only closes on exit
 func (ch *chain) Errored() <-chan struct{} {
 	return ch.exitChan
-}
-
-func (ch *chain) MigrationStatus() migration.Status {
-	return ch.migrationStatus
 }
