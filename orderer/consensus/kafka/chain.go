@@ -146,7 +146,7 @@ func (chain *chainImpl) Errored() <-chan struct{} {
 // launched, before the call to NewServer(). Launches a goroutine so as not to
 // block the consensus.Manager.
 func (chain *chainImpl) Start() {
-	go startThread(chain)
+	startThread(chain)
 }
 
 // Halt frees the resources which were allocated for this Chain. Implements the
@@ -338,7 +338,7 @@ func startThread(chain *chainImpl) {
 
 	logger.Infof("[channel: %s] Start phase completed successfully", chain.channel.topic())
 
-	chain.processMessagesToBlocks() // Keep up to date with the channel
+	go chain.processMessagesToBlocks() // Keep up to date with the channel
 }
 
 // processMessagesToBlocks drains the Kafka consumer for the given channel, and
@@ -1026,7 +1026,7 @@ func setupProducerForChannel(retryOptions localconfig.Retry, haltChan chan struc
 
 // Creates the Kafka topic for the channel if it does not already exist
 func setupTopicForChannel(retryOptions localconfig.Retry, haltChan chan struct{}, brokers []string, brokerConfig *sarama.Config, topicDetail *sarama.TopicDetail, channel channel) error {
-
+	logger.Infof("setupTopicForChannel, brokers: %v", brokers)
 	// requires Kafka v0.10.1.0 or higher
 	if !brokerConfig.Version.IsAtLeast(sarama.V0_10_1_0) {
 		return nil
@@ -1053,7 +1053,6 @@ func setupTopicForChannel(retryOptions localconfig.Retry, haltChan chan struct{}
 			for _, address := range brokers {
 				broker := sarama.NewBroker(address)
 				err = broker.Open(brokerConfig)
-
 				if err != nil {
 					continue
 				}
