@@ -52,7 +52,7 @@ yuGnBXj8ytqU0CwIPX4WecigUCAkVDNx
 func TestPeerInfoWithWrongCert(t *testing.T) {
 	addr := "localhost"
 	cert := []byte{0, 1, 2, 3}
-	_, err := NewPeerInfo(addr, cert)
+	_, err := NewPeerInfo(addr, cert, cert)
 	if err == nil {
 		t.Fatalf("Peer accepted a wrong certificate.")
 	}
@@ -61,7 +61,7 @@ func TestPeerInfoWithWrongCert(t *testing.T) {
 func TestPeerInfoWithOkCert(t *testing.T) {
 	addr := "localhost"
 	block, _ := pem.Decode([]byte(cert))
-	pi, err := NewPeerInfo(addr, block.Bytes)
+	pi, err := NewPeerInfo(addr, block.Bytes, block.Bytes)
 	if err != nil {
 		t.Fatalf("Peer creation failed.")
 	}

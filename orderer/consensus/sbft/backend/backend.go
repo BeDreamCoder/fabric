@@ -18,6 +18,7 @@ package backend
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	crand "crypto/rand"
@@ -46,7 +47,6 @@ import (
 	"github.com/hyperledger/fabric/protos/utils"
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
@@ -274,7 +274,7 @@ func (b *Backend) Validate(chainID string, req *sb.Request) ([][]*sb.Request, bo
 		logger.Errorf("Failed to order message: %s", err)
 		return nil, false
 	}
-	logger.Info("Envelope order pending: %t", pending)
+	logger.Infof("Envelope order pending: %t", pending)
 
 	if !pending {
 		blocks := b.propose(chainID, batches...)

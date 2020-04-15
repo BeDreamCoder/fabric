@@ -24,7 +24,7 @@ import (
 )
 
 func TestXsetNoByz(t *testing.T) {
-	s := &SBFT{config: sb.Config{N: 4, F: 1}, view: 3}
+	s := &SBFT{config: sb.Options{N: 4, F: 1}, view: 3}
 	vcs := []*sb.ViewChange{
 		{
 			View: 3,
@@ -59,7 +59,7 @@ func TestXsetNoByz(t *testing.T) {
 }
 
 func TestXsetNoNew(t *testing.T) {
-	s := &SBFT{config: sb.Config{N: 4, F: 1}, view: 3}
+	s := &SBFT{config: sb.Options{N: 4, F: 1}, view: 3}
 	prev := s.makeBatch(2, []byte("prev"), nil)
 	vcs := []*sb.ViewChange{
 		{
@@ -97,7 +97,7 @@ func TestXsetNoNew(t *testing.T) {
 }
 
 func TestXsetByz0(t *testing.T) {
-	s := &SBFT{config: sb.Config{N: 4, F: 1}, view: 3}
+	s := &SBFT{config: sb.Options{N: 4, F: 1}, view: 3}
 	vcs := []*sb.ViewChange{
 		{
 			View:       3,
@@ -143,7 +143,7 @@ func TestXsetByz0(t *testing.T) {
 }
 
 func TestXsetByz2(t *testing.T) {
-	s := &SBFT{config: sb.Config{N: 4, F: 1}, view: 3}
+	s := &SBFT{config: sb.Options{N: 4, F: 1}, view: 3}
 	vcs := []*sb.ViewChange{
 		{
 			View:       3,

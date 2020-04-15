@@ -22,9 +22,9 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"github.com/pkg/errors"
 	"net"
 
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
