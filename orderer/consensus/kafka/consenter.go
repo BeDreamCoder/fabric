@@ -12,10 +12,8 @@ import (
 	"github.com/hyperledger/fabric/common/metrics"
 	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/hyperledger/fabric/orderer/consensus"
-	"github.com/hyperledger/fabric/orderer/consensus/inactive"
 	cb "github.com/hyperledger/fabric/protos/common"
 	"github.com/op/go-logging"
-	"github.com/pkg/errors"
 )
 
 //go:generate counterfeiter -o mock/health_checker.go -fake-name HealthChecker . healthChecker
@@ -85,14 +83,15 @@ type consenterImpl struct {
 // existingChains.
 func (consenter *consenterImpl) HandleChain(support consensus.ConsenterSupport, metadata *cb.Metadata) (consensus.Chain, error) {
 
+	// annotation by ztl for sharding consensus
 	// Check if this node was migrated from Raft
-	if consenter.inactiveChainRegistry != nil {
-		logger.Infof("This node was migrated from Kafka to Raft, skipping activation of Kafka chain")
-		consenter.inactiveChainRegistry.TrackChain(support.ChainID(), support.Block(0), func() {
-			consenter.mkChain(support.ChainID())
-		})
-		return &inactive.Chain{Err: errors.Errorf("channel %s is not serviced by me", support.ChainID())}, nil
-	}
+	//if consenter.inactiveChainRegistry != nil {
+	//	logger.Infof("This node was migrated from Kafka to Raft, skipping activation of Kafka chain")
+	//	consenter.inactiveChainRegistry.TrackChain(support.ChainID(), support.Block(0), func() {
+	//		consenter.mkChain(support.ChainID())
+	//	})
+	//	return &inactive.Chain{Err: errors.Errorf("channel %s is not serviced by me", support.ChainID())}, nil
+	//}
 
 	lastOffsetPersisted, lastOriginalOffsetProcessed, lastResubmittedConfigOffset := getOffsets(metadata.Value, support.ChainID())
 	ch, err := newChain(consenter, support, lastOffsetPersisted, lastOriginalOffsetProcessed, lastResubmittedConfigOffset)
