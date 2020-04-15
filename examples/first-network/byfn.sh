@@ -426,6 +426,8 @@ function generateChannelArtifacts() {
     configtxgen -profile SampleDevModeKafka -channelID $SYS_CHANNEL -outputBlock ./channel-artifacts/genesis.block
   elif [ "$CONSENSUS_TYPE" == "etcdraft" ]; then
     configtxgen -profile SampleMultiConsensus -channelID $SYS_CHANNEL -outputBlock ./channel-artifacts/genesis.block
+  elif [ "$CONSENSUS_TYPE" == "sbft" ]; then
+    configtxgen -profile SampleDevModeSbft -channelID $SYS_CHANNEL -outputBlock ./channel-artifacts/genesis.block
   else
     set +x
     echo "unrecognized CONSESUS_TYPE='$CONSENSUS_TYPE'. exiting"
@@ -467,6 +469,15 @@ function generateChannelArtifacts() {
     exit 1
   fi
 
+  set -x
+  configtxgen -profile SbftChannel -outputCreateChannelTx ./channel-artifacts/sbftchannel.tx -channelID sbftchannel
+  res=$?
+  set +x
+  if [ $res -ne 0 ]; then
+    echo "Failed to generate sbft channel configuration transaction..."
+    exit 1
+  fi
+
   echo
   echo "#################################################################"
   echo "#######    Generating anchor peer update for Org1MSP   ##########"
@@ -488,12 +499,22 @@ function generateChannelArtifacts() {
     echo "Failed to generate anchor peer update for Solo Org1MSP..."
     exit 1
   fi
+
   set -x
   configtxgen -profile KafkaChannel -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchorsForKafka.tx -channelID kafkachannel -asOrg Org1MSP
   res=$?
   set +x
   if [ $res -ne 0 ]; then
     echo "Failed to generate anchor peer update for Kafka Org1MSP..."
+    exit 1
+  fi
+
+  set -x
+  configtxgen -profile SbftChannel -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchorsForSbft.tx -channelID sbftchannel -asOrg Org1MSP
+  res=$?
+  set +x
+  if [ $res -ne 0 ]; then
+    echo "Failed to generate anchor peer update for Sbft Org1MSP..."
     exit 1
   fi
 
@@ -518,6 +539,16 @@ function generateChannelArtifacts() {
     echo "Failed to generate anchor peer update for Kafka Org2MSP..."
     exit 1
   fi
+
+  set -x
+  configtxgen -profile SbftChannel -outputAnchorPeersUpdate ./channel-artifacts/Org2MSPanchorsForSbft.tx -channelID sbftchannel -asOrg Org2MSP
+  res=$?
+  set +x
+  if [ $res -ne 0 ]; then
+    echo "Failed to generate anchor peer update for Sbft Org2MSP..."
+    exit 1
+  fi
+
   echo
 }
 

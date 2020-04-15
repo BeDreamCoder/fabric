@@ -45,6 +45,10 @@ services:
       - ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE=/var/hyperledger/orderer/tls/server.crt
       - ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY=/var/hyperledger/orderer/tls/server.key
       - ORDERER_GENERAL_CLUSTER_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      # sbft
+      - ORDERER_SBFTLOCAL_PEERCOMMADDR=:6101
+      - ORDERER_SBFTLOCAL_CERTFILE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_SBFTLOCAL_KEYFILE=/var/hyperledger/orderer/tls/server.key
     working_dir: /opt/gopath/src/github.com/hyperledger/fabric
     command: orderer
 

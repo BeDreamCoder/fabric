@@ -274,6 +274,12 @@ Orderer: &OrdererDefaults
                 Port: 7050
                 ClientTLSCert: crypto-config/ordererOrganizations/example.com/orderers/orderer5.example.com/tls/server.crt
                 ServerTLSCert: crypto-config/ordererOrganizations/example.com/orderers/orderer5.example.com/tls/server.crt
+        Options:
+            TickInterval: 500ms
+            ElectionTick: 10
+            HeartbeatTick: 1
+            MaxInflightBlocks: 5
+            SnapshotIntervalSize: 20 MB
 
     Sbft:
         Consenters:
@@ -406,6 +412,23 @@ Profiles:
             - orderer3.example.com:7050
             - orderer4.example.com:7050
             - orderer5.example.com:7050
+        Application:
+            <<: *ApplicationDefaults
+            Organizations:
+                - *Org1
+                - *Org2
+            Capabilities:
+                <<: *ApplicationCapabilities
+
+    SbftChannel:
+        Consortium: SampleConsortium
+        <<: *ChannelDefaults
+        ConsensusType: sbft
+        OrdererAddresses:
+            - orderer.example.com:7050
+            - orderer2.example.com:7050
+            - orderer3.example.com:7050
+            - orderer4.example.com:7050
         Application:
             <<: *ApplicationDefaults
             Organizations:
