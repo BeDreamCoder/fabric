@@ -75,7 +75,7 @@ func (sbft *consenter) HandleChain(support consensus.ConsenterSupport, metadata 
 	logger.Infof("Starting a chain: %d", support.ChainID())
 
 	m := &sb.ConfigMetadata{}
-	if err := proto.Unmarshal(support.SharedConfig().ConsensusMetadata(), m); err != nil {
+	if err := proto.Unmarshal(support.SharedConfig().SbftMetadata(), m); err != nil {
 		return nil, errors.Wrap(err, "Failed to unmarshal consensus metadata")
 	}
 	if m.Options == nil {

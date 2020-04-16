@@ -225,8 +225,8 @@ func NewOrdererGroup(conf *genesisconfig.Orderer) (*cb.ConfigGroup, error) {
 		addValue(ordererGroup, channelconfig.CapabilitiesValue(conf.Capabilities), channelconfig.AdminsPolicyKey)
 	}
 
-	var consensusMetadata []byte
-	var err error
+	//var consensusMetadata []byte
+	//var err error
 
 	//switch conf.OrdererType {
 	//case ConsensusTypeSolo:
@@ -247,20 +247,22 @@ func NewOrdererGroup(conf *genesisconfig.Orderer) (*cb.ConfigGroup, error) {
 			addValue(ordererGroup, channelconfig.KafkaBrokersValue(conf.Kafka.Brokers), channelconfig.AdminsPolicyKey)
 		}
 		if conf.EtcdRaft != nil {
-			if consensusMetadata, err = etcdraft.Marshal(conf.EtcdRaft); err != nil {
+			if consensusMetadata, err := etcdraft.Marshal(conf.EtcdRaft); err != nil {
 				return nil, errors.Errorf("cannot marshal metadata for orderer type %s: %s", etcdraft.TypeKey, err)
+			} else {
+				addValue(ordererGroup, channelconfig.ConsensusTypeValue(conf.OrdererType, consensusMetadata), channelconfig.AdminsPolicyKey)
 			}
 		}
 		if conf.Sbft != nil {
-			if consensusMetadata, err = sbft.Marshal(conf.Sbft); err != nil {
+			if consensusMetadata, err := sbft.Marshal(conf.Sbft); err != nil {
 				return nil, errors.Errorf("cannot marshal metadata for orderer type %s: %v", ConsensusTypeSbft, err)
+			} else {
+				addValue(ordererGroup, channelconfig.SbftMetadataValue(conf.OrdererType, consensusMetadata), channelconfig.AdminsPolicyKey)
 			}
 		}
 	} else {
 		return nil, errors.Errorf("unknown orderer type: %s", conf.OrdererType)
 	}
-
-	addValue(ordererGroup, channelconfig.ConsensusTypeValue(conf.OrdererType, consensusMetadata), channelconfig.AdminsPolicyKey)
 
 	for _, org := range conf.Organizations {
 		var err error

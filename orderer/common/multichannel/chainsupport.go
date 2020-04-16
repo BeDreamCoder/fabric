@@ -62,6 +62,7 @@ func newChainSupport(
 	// Set up the block writer
 	cs.BlockWriter = newBlockWriter(lastBlock, registrar, cs)
 
+	// TODO ZTL existing channel
 	// Add by ztl
 	// Set up the consenter
 	consenterType := ledgerResources.ChannelConfig().ConsensusType()

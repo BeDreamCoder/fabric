@@ -42,11 +42,16 @@ const (
 
 	// EndpointsKey is the cb.COnfigValue key name for the Endpoints message in the OrdererOrgGroup.
 	EndpointsKey = "Endpoints"
+
+	// Add by ztl
+	// SbftMetadataKey is the cb.ConfigItem type key name for the SbftMetadata message.
+	SbftConsensusKey = "SbftConsensus"
 )
 
 // OrdererProtos is used as the source of the OrdererConfig.
 type OrdererProtos struct {
 	ConsensusType       *ab.ConsensusType
+	SbftConsensus       *ab.ConsensusType
 	BatchSize           *ab.BatchSize
 	BatchTimeout        *ab.BatchTimeout
 	KafkaBrokers        *ab.KafkaBrokers
@@ -188,6 +193,12 @@ func (oc *OrdererConfig) Organizations() map[string]OrdererOrg {
 // Capabilities returns the capabilities the ordering network has for this channel.
 func (oc *OrdererConfig) Capabilities() OrdererCapabilities {
 	return capabilities.NewOrdererProvider(oc.protos.Capabilities.Capabilities)
+}
+
+// Add by ztl
+// ConsensusMetadata returns the sbft consensus metadata.
+func (oc *OrdererConfig) SbftMetadata() []byte {
+	return oc.protos.SbftConsensus.Metadata
 }
 
 func (oc *OrdererConfig) Validate() error {

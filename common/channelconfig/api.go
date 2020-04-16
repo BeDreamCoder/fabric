@@ -120,6 +120,10 @@ type Orderer interface {
 
 	// Capabilities defines the capabilities for the orderer portion of a channel
 	Capabilities() OrdererCapabilities
+
+	// Add by ztl
+	// SbftMetadata returns the sbft consensus metadata.
+	SbftMetadata() []byte
 }
 
 // ChannelCapabilities defines the capabilities for a channel

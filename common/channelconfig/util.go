@@ -233,3 +233,16 @@ func ACLValues(acls map[string]string) *StandardConfigValue {
 		value: a,
 	}
 }
+
+// Add by ztl
+// SbftMetadataValue returns the config definition for the sbft metadata.
+// It is a value for the /Channel/Orderer group.
+func SbftMetadataValue(consensusType string, consensusMetadata []byte) *StandardConfigValue {
+	return &StandardConfigValue{
+		key: SbftConsensusKey,
+		value: &ab.ConsensusType{
+			Type:     consensusType,
+			Metadata: consensusMetadata,
+		},
+	}
+}
