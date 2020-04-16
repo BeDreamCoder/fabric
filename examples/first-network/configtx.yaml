@@ -381,12 +381,13 @@ Channel: &ChannelDefaults
 Profiles:
 
     SoloChannel:
-        Consortium: SingleConsortium
+        Consortium: SampleConsortium
         <<: *ChannelDefaults
         Application:
             <<: *ApplicationDefaults
             Organizations:
                 - *Org1
+                - *Org2
             Capabilities:
                 <<: *ApplicationCapabilities
 
@@ -486,7 +487,7 @@ Profiles:
         Application:
             <<: *ApplicationDefaults
             Organizations:
-            - <<: *OrdererOrg
+                -   <<: *OrdererOrg
         Consortiums:
             SampleConsortium:
                 Organizations:

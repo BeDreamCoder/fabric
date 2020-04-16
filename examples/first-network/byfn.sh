@@ -444,11 +444,23 @@ function generateChannelArtifacts() {
   echo "### Generating channel configuration transaction 'channel.tx' ###"
   echo "#################################################################"
   set -x
-  configtxgen -profile EtcdraftChannel -outputCreateChannelTx ./channel-artifacts/channel.tx -channelID $CHANNEL_NAME
+  if [ "$CONSENSUS_TYPE" == "solo" ]; then
+    configtxgen -profile SoloChannel -outputCreateChannelTx ./channel-artifacts/channel.tx -channelID $CHANNEL_NAME
+  elif [ "$CONSENSUS_TYPE" == "kafka" ]; then
+    configtxgen -profile KafkaChannel -outputCreateChannelTx ./channel-artifacts/channel.tx -channelID $CHANNEL_NAME
+  elif [ "$CONSENSUS_TYPE" == "etcdraft" ]; then
+    configtxgen -profile EtcdraftChannel -outputCreateChannelTx ./channel-artifacts/channel.tx -channelID $CHANNEL_NAME
+  elif [ "$CONSENSUS_TYPE" == "sbft" ]; then
+    configtxgen -profile SbftChannel -outputCreateChannelTx ./channel-artifacts/channel.tx -channelID $CHANNEL_NAME
+  else
+    set +x
+    echo "unrecognized CONSESUS_TYPE='$CONSENSUS_TYPE'. exiting"
+    exit 1
+  fi
   res=$?
   set +x
   if [ $res -ne 0 ]; then
-    echo "Failed to generate etcdraft channel configuration transaction..."
+    echo "Failed to generate channel configuration transaction..."
     exit 1
   fi
   set -x
@@ -483,7 +495,19 @@ function generateChannelArtifacts() {
   echo "#######    Generating anchor peer update for Org1MSP   ##########"
   echo "#################################################################"
   set -x
-  configtxgen -profile EtcdraftChannel -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org1MSP
+  if [ "$CONSENSUS_TYPE" == "solo" ]; then
+    configtxgen -profile SoloChannel -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org1MSP
+  elif [ "$CONSENSUS_TYPE" == "kafka" ]; then
+    configtxgen -profile KafkaChannel -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org1MSP
+  elif [ "$CONSENSUS_TYPE" == "etcdraft" ]; then
+    configtxgen -profile EtcdraftChannel -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org1MSP
+  elif [ "$CONSENSUS_TYPE" == "sbft" ]; then
+    configtxgen -profile SbftChannel -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org1MSP
+  else
+    set +x
+    echo "unrecognized CONSESUS_TYPE='$CONSENSUS_TYPE'. exiting"
+    exit 1
+  fi
   res=$?
   set +x
   if [ $res -ne 0 ]; then
@@ -523,11 +547,32 @@ function generateChannelArtifacts() {
   echo "#######    Generating anchor peer update for Org2MSP   ##########"
   echo "#################################################################"
   set -x
-  configtxgen -profile EtcdraftChannel -outputAnchorPeersUpdate ./channel-artifacts/Org2MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org2MSP
+  if [ "$CONSENSUS_TYPE" == "solo" ]; then
+    configtxgen -profile SoloChannel -outputAnchorPeersUpdate ./channel-artifacts/Org2MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org2MSP
+  elif [ "$CONSENSUS_TYPE" == "kafka" ]; then
+    configtxgen -profile KafkaChannel -outputAnchorPeersUpdate ./channel-artifacts/Org2MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org2MSP
+  elif [ "$CONSENSUS_TYPE" == "etcdraft" ]; then
+    configtxgen -profile EtcdraftChannel -outputAnchorPeersUpdate ./channel-artifacts/Org2MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org2MSP
+  elif [ "$CONSENSUS_TYPE" == "sbft" ]; then
+    configtxgen -profile SbftChannel -outputAnchorPeersUpdate ./channel-artifacts/Org2MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org2MSP
+  else
+    set +x
+    echo "unrecognized CONSESUS_TYPE='$CONSENSUS_TYPE'. exiting"
+    exit 1
+  fi
   res=$?
   set +x
   if [ $res -ne 0 ]; then
     echo "Failed to generate anchor peer update for Org2MSP..."
+    exit 1
+  fi
+
+  set -x
+  configtxgen -profile SoloChannel -outputAnchorPeersUpdate ./channel-artifacts/Org2MSPanchorsForSolo.tx -channelID solochannel -asOrg Org2MSP
+  res=$?
+  set +x
+  if [ $res -ne 0 ]; then
+    echo "Failed to generate anchor peer update for Solo Org2MSP..."
     exit 1
   fi
 
