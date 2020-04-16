@@ -168,6 +168,8 @@ function networkUp() {
     COMPOSE_FILES="${COMPOSE_FILES} -f ${COMPOSE_FILE_KAFKA}"
   elif [ "${CONSENSUS_TYPE}" == "etcdraft" ]; then
     COMPOSE_FILES="${COMPOSE_FILES} -f ${COMPOSE_FILE_RAFT2}"
+  elif [ "${CONSENSUS_TYPE}" == "sbft" ]; then
+    COMPOSE_FILES="${COMPOSE_FILES} -f ${COMPOSE_FILE_SBFT}"
   fi
   if [ "${IF_COUCHDB}" == "couchdb" ]; then
     COMPOSE_FILES="${COMPOSE_FILES} -f ${COMPOSE_FILE_COUCH}"
@@ -189,6 +191,12 @@ function networkUp() {
     sleep 1
     echo "Sleeping 15s to allow $CONSENSUS_TYPE cluster to complete booting"
     sleep 14
+  fi
+
+  if [ "$CONSENSUS_TYPE" == "sbft" ]; then
+    sleep 1
+    echo "Sleeping 10s to allow $CONSENSUS_TYPE cluster to complete booting"
+    sleep 9
   fi
 
   # now run the end to end script
@@ -617,6 +625,8 @@ COMPOSE_FILE_COUCH=docker-compose-couch.yaml
 COMPOSE_FILE_KAFKA=docker-compose-kafka.yaml
 # two additional etcd/raft orderers
 COMPOSE_FILE_RAFT2=docker-compose-etcdraft2.yaml
+# sbft compose file
+COMPOSE_FILE_SBFT=docker-compose-sbft.yaml
 # certificate authorities compose file
 COMPOSE_FILE_CA=docker-compose-ca.yaml
 #
