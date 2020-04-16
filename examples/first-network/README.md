@@ -2,7 +2,7 @@
 ```
 ./byfn.sh up -o etcdraft
 ```
-if you want to start solo, kafka or sbft consensus, please do the following
+If you want to start solo, kafka or sbft consensus, please do the following
 ```
 cd $GOPATH/src/github.com/hyperledger/fabric
 mkdir -p examples/bin
@@ -11,7 +11,7 @@ go build -o examples/bin/configtxgen common/tools/configtxgen/main.go
 ./byfn.sh up -o solo
 ```
 
-2. tart multiple consensus network
+2. Start multiple consensus network
 ```
 ./byfn.sh up -o etcdraft
 

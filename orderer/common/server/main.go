@@ -664,7 +664,7 @@ func initializeMultichannelRegistrar(
 
 	consenters := make(map[string]consensus.Consenter)
 
-	registrar := multichannel.NewRegistrar(*conf, lf, signer, metricsProvider, callbacks...)
+	registrar := multichannel.NewRegistrar(*conf, lf, signer, metricsProvider, srvConf.SecOpts.Certificate, callbacks...)
 
 	var icr etcdraft.InactiveChainRegistry
 	if isClusterType(bootstrapBlock) {

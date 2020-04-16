@@ -10,9 +10,12 @@ SPDX-License-Identifier: Apache-2.0
 package multichannel
 
 import (
+	"encoding/pem"
 	"fmt"
+	"strings"
 	"sync"
 
+	bccsp "github.com/hyperledger/fabric/bccsp/utils"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/configtx"
 	"github.com/hyperledger/fabric/common/crypto"
@@ -103,6 +106,9 @@ type Registrar struct {
 	systemChannel      *ChainSupport
 	templator          msgprocessor.ChannelConfigTemplator
 	callbacks          []channelconfig.BundleActor
+	// Add by ztl
+	// PEM-encoded X509 public key to be used for TLS communication
+	cert []byte
 }
 
 // ConfigBlock retrieves the last configuration block from the given ledger.
@@ -131,6 +137,7 @@ func NewRegistrar(
 	ledgerFactory blockledger.Factory,
 	signer crypto.LocalSigner,
 	metricsProvider metrics.Provider,
+	cert []byte,
 	callbacks ...channelconfig.BundleActor) *Registrar {
 	r := &Registrar{
 		config:             config,
@@ -139,6 +146,7 @@ func NewRegistrar(
 		signer:             signer,
 		blockcutterMetrics: blockcutter.NewMetrics(metricsProvider),
 		callbacks:          callbacks,
+		cert:               cert,
 	}
 
 	return r
@@ -280,6 +288,18 @@ func (r *Registrar) newLedgerResources(configTx *cb.Envelope) *ledgerResources {
 
 	checkResourcesOrPanic(bundle)
 
+	// Add by ztl
+	selfID, err := r.detectSelfID()
+	if err != nil {
+		logger.Panicf("Error detectSelfID: %s", err)
+	}
+	for _, v := range bundle.ChannelConfig().OrdererAddresses() {
+		logger.Infof("detectSelfID address: %s, self: %s", v, selfID)
+		if strings.HasPrefix(v, selfID) {
+			logger.Infof("Success detectSelfID: %s", selfID)
+		}
+	}
+
 	ledger, err := r.ledgerFactory.GetOrCreate(chdr.ChannelId)
 	if err != nil {
 		logger.Panicf("Error getting ledger for %s", chdr.ChannelId)
@@ -351,4 +371,21 @@ func (r *Registrar) NewChannelConfig(envConfigUpdate *cb.Envelope) (channelconfi
 // CreateBundle calls channelconfig.NewBundle
 func (r *Registrar) CreateBundle(channelID string, config *cb.Config) (channelconfig.Resources, error) {
 	return channelconfig.NewBundle(channelID, config)
+}
+
+// Add by ztl
+func (r *Registrar) detectSelfID() (string, error) {
+	bl, _ := pem.Decode(r.cert)
+	if bl == nil {
+		logger.Errorf("PEM decode failed, offending PEM is: %s", string(r.cert))
+		return "", errors.Errorf("invalid PEM block")
+	}
+
+	cert, err := bccsp.DERToX509Certificate(bl.Bytes)
+	if err != nil {
+		logger.Errorf("DERToX509Certificate failed, offending PEM is: %s", string(r.cert))
+		return "", err
+	}
+
+	return cert.Subject.CommonName, nil
 }
