@@ -497,6 +497,12 @@ Profiles:
     SampleMultiConsensus:
         <<: *ChannelDefaults
         ConsensusType: etcdraft
+        OrdererAddresses:
+            - orderer.example.com:7050
+            - orderer2.example.com:7050
+            - orderer3.example.com:7050
+            - orderer4.example.com:7050
+            - orderer5.example.com:7050
         Capabilities:
             <<: *ChannelCapabilities
         Orderer:
