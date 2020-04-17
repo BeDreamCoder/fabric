@@ -166,6 +166,10 @@ func (r *Registrar) Initialize(consenters map[string]consensus.Consenter) {
 			logger.Panic("Programming error, configTx should never be nil here")
 		}
 		ledgerResources := r.newLedgerResources(configTx)
+		// Add by ztl
+		if ledgerResources == nil {
+			continue
+		}
 		chainID := ledgerResources.ConfigtxValidator().ChainID()
 
 		if _, ok := ledgerResources.ConsortiumsConfig(); ok {
@@ -293,11 +297,19 @@ func (r *Registrar) newLedgerResources(configTx *cb.Envelope) *ledgerResources {
 	if err != nil {
 		logger.Panicf("Error detectSelfID: %s", err)
 	}
+	// skip not contain self consensus initial
+	hasSelf := false
+	logger.Infof("detectSelfID orderer addresses: %v, self: %s, channel: %s", bundle.ChannelConfig().OrdererAddresses(), selfID, chdr.ChannelId)
 	for _, v := range bundle.ChannelConfig().OrdererAddresses() {
-		logger.Infof("detectSelfID address: %s, self: %s", v, selfID)
 		if strings.HasPrefix(v, selfID) {
 			logger.Infof("Success detectSelfID: %s", selfID)
+			hasSelf = true
+			break
 		}
+	}
+	if !hasSelf {
+		logger.Infof("Not detectSelfID: %s for channel: %s", selfID, chdr.ChannelId)
+		return nil
 	}
 
 	ledger, err := r.ledgerFactory.GetOrCreate(chdr.ChannelId)
@@ -333,6 +345,10 @@ func (r *Registrar) newChain(configtx *cb.Envelope) {
 	defer r.lock.Unlock()
 
 	ledgerResources := r.newLedgerResources(configtx)
+	// Add by ztl
+	if ledgerResources == nil {
+		return
+	}
 	// If we have no blocks, we need to create the genesis block ourselves.
 	if ledgerResources.Height() == 0 {
 		ledgerResources.Append(blockledger.CreateNextBlock(ledgerResources, []*cb.Envelope{configtx}))
