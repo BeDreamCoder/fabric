@@ -611,3 +611,8 @@ func (fake *OrdererConfig) recordInvocation(key string, args []interface{}) {
 	}
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
+
+// Add by ztl
+func (fake *OrdererConfig) SbftMetadata() []byte {
+	return nil
+}

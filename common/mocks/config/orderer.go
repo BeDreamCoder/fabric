@@ -34,6 +34,8 @@ type Orderer struct {
 	OrganizationsVal map[string]channelconfig.OrdererOrg
 	// CapabilitiesVal is returned as the result of Capabilities()
 	CapabilitiesVal channelconfig.OrdererCapabilities
+	// SbftMetadataVal is returned as the result of SbftMetadata()
+	SbftMetadataVal []byte
 }
 
 // ConsensusType returns the ConsensusTypeVal
@@ -79,6 +81,12 @@ func (o *Orderer) Organizations() map[string]channelconfig.OrdererOrg {
 // Capabilities returns CapabilitiesVal
 func (o *Orderer) Capabilities() channelconfig.OrdererCapabilities {
 	return o.CapabilitiesVal
+}
+
+// Add by ztl
+// ConsensusMetadata returns the sbft consensus metadata.
+func (o *Orderer) SbftMetadata() []byte {
+	return o.SbftMetadataVal
 }
 
 // OrdererCapabilities mocks the channelconfig.OrdererCapabilities interface
