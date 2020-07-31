@@ -85,9 +85,9 @@ var _ = Describe("QueryCommitted", func() {
 		It("queries committed chaincodes and writes the output as human readable plain-text", func() {
 			err := committedQuerier.Query()
 			Expect(err).NotTo(HaveOccurred())
-			Eventually(committedQuerier.Writer).Should(gbytes.Say("Committed chaincode definitions on channel 'test-channel'"))
-			Eventually(committedQuerier.Writer).Should(gbytes.Say("Name: woohoo, Version: a-version, Sequence: 93, Endorsement Plugin: e-plugin, Validation Plugin: v-plugin"))
-			Eventually(committedQuerier.Writer).Should(gbytes.Say("Name: yahoo, Version: another-version, Sequence: 20, Endorsement Plugin: e-plugin, Validation Plugin: v-plugin"))
+			Eventually(committedQuerier.Writer).Should(gbytes.Say("Committed chaincode definitions on channel 'test-channel':\n"))
+			Eventually(committedQuerier.Writer).Should(gbytes.Say("Name: woohoo, Version: a-version, Sequence: 93, Endorsement Plugin: e-plugin, Validation Plugin: v-plugin\n"))
+			Eventually(committedQuerier.Writer).Should(gbytes.Say("Name: yahoo, Version: another-version, Sequence: 20, Endorsement Plugin: e-plugin, Validation Plugin: v-plugin\n"))
 		})
 
 		Context("when JSON-formatted output is requested", func() {
@@ -117,6 +117,7 @@ var _ = Describe("QueryCommitted", func() {
 					},
 				}
 				json, err := json.MarshalIndent(expectedOutput, "", "\t")
+				Expect(err).NotTo(HaveOccurred())
 				Eventually(committedQuerier.Writer).Should(gbytes.Say(fmt.Sprintf(`\Q%s\E`, string(json))))
 			})
 		})
@@ -190,6 +191,7 @@ var _ = Describe("QueryCommitted", func() {
 						},
 					}
 					json, err := json.MarshalIndent(expectedOutput, "", "\t")
+					Expect(err).NotTo(HaveOccurred())
 					Eventually(committedQuerier.Writer).Should(gbytes.Say(fmt.Sprintf(`\Q%s\E`, string(json))))
 				})
 			})
@@ -311,14 +313,14 @@ var _ = Describe("QueryCommitted", func() {
 	})
 
 	Describe("QueryCommittedCmd", func() {
-		var (
-			queryCommittedCmd *cobra.Command
-		)
+		var queryCommittedCmd *cobra.Command
 
 		BeforeEach(func() {
 			cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
 			Expect(err).To(BeNil())
 			queryCommittedCmd = chaincode.QueryCommittedCmd(nil, cryptoProvider)
+			queryCommittedCmd.SilenceErrors = true
+			queryCommittedCmd.SilenceUsage = true
 			queryCommittedCmd.SetArgs([]string{
 				"--name=testcc",
 				"--channelID=testchannel",

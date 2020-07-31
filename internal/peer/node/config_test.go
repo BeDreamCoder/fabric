@@ -11,13 +11,12 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric/core/ledger"
-	"github.com/hyperledger/fabric/core/ledger/util/couchdb"
 	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLedgerConfig(t *testing.T) {
-	defer viper.Set("ledger.state.stateDatabase", "goleveldb")
+	defer viper.Reset()
 	var tests = []struct {
 		name     string
 		config   map[string]interface{}
@@ -33,7 +32,7 @@ func TestLedgerConfig(t *testing.T) {
 				RootFSPath: "/peerfs/ledgersData",
 				StateDBConfig: &ledger.StateDBConfig{
 					StateDatabase: "goleveldb",
-					CouchDB:       &couchdb.Config{},
+					CouchDB:       &ledger.CouchDBConfig{},
 				},
 				PrivateDataConfig: &ledger.PrivateDataConfig{
 					MaxBatchSize:    5000,
@@ -42,6 +41,9 @@ func TestLedgerConfig(t *testing.T) {
 				},
 				HistoryDBConfig: &ledger.HistoryDBConfig{
 					Enabled: false,
+				},
+				SnapshotsConfig: &ledger.SnapshotsConfig{
+					RootDir: "/peerfs/ledgersData/snapshots",
 				},
 			},
 		},
@@ -63,7 +65,7 @@ func TestLedgerConfig(t *testing.T) {
 				RootFSPath: "/peerfs/ledgersData",
 				StateDBConfig: &ledger.StateDBConfig{
 					StateDatabase: "CouchDB",
-					CouchDB: &couchdb.Config{
+					CouchDB: &ledger.CouchDBConfig{
 						Address:                 "localhost:5984",
 						Username:                "username",
 						Password:                "password",
@@ -85,6 +87,9 @@ func TestLedgerConfig(t *testing.T) {
 				},
 				HistoryDBConfig: &ledger.HistoryDBConfig{
 					Enabled: false,
+				},
+				SnapshotsConfig: &ledger.SnapshotsConfig{
+					RootDir: "/peerfs/ledgersData/snapshots",
 				},
 			},
 		},
@@ -108,12 +113,13 @@ func TestLedgerConfig(t *testing.T) {
 				"ledger.pvtdataStore.collElgProcDbBatchesInterval":   10000,
 				"ledger.pvtdataStore.purgeInterval":                  1000,
 				"ledger.history.enableHistoryDatabase":               true,
+				"ledger.snapshots.rootDir":                           "/peerfs/snapshots",
 			},
 			expected: &ledger.Config{
 				RootFSPath: "/peerfs/ledgersData",
 				StateDBConfig: &ledger.StateDBConfig{
 					StateDatabase: "CouchDB",
-					CouchDB: &couchdb.Config{
+					CouchDB: &ledger.CouchDBConfig{
 						Address:                 "localhost:5984",
 						Username:                "username",
 						Password:                "password",
@@ -136,6 +142,9 @@ func TestLedgerConfig(t *testing.T) {
 				HistoryDBConfig: &ledger.HistoryDBConfig{
 					Enabled: true,
 				},
+				SnapshotsConfig: &ledger.SnapshotsConfig{
+					RootDir: "/peerfs/snapshots",
+				},
 			},
 		},
 	}
@@ -147,7 +156,7 @@ func TestLedgerConfig(t *testing.T) {
 				viper.Set(k, v)
 			}
 			conf := ledgerConfig()
-			assert.EqualValues(t, _test.expected, conf)
+			require.EqualValues(t, _test.expected, conf)
 		})
 	}
 }

@@ -52,7 +52,6 @@ func (p *baseEvaluator) checkSBAndCCEP(cc, coll, key string, blockNum, txNum uin
 		//    when performing its side of the validation.
 		case *ledger.CollConfigNotDefinedError, *ledger.InvalidCollNameError:
 			logger.Warningf(errors.WithMessage(err, "skipping key-level validation").Error())
-			err = nil
 		// 3) any other type of error should return an execution failure which will
 		//    lead to halting the processing on this channel. Note that any non-categorized
 		//    deterministic error would be caught by the default and would lead to
@@ -181,18 +180,6 @@ func NewKeyLevelValidator(evaluator RWSetPolicyEvaluatorFactory, vpmgr KeyLevelV
 	}
 }
 
-func (klv *KeyLevelValidator) invokeOnce(block *common.Block, txnum uint64) *sync.Once {
-	klv.blockDep.mutex.Lock()
-	defer klv.blockDep.mutex.Unlock()
-
-	if klv.blockDep.blockNum != block.Header.Number {
-		klv.blockDep.blockNum = block.Header.Number
-		klv.blockDep.txDepOnce = make([]sync.Once, len(block.Data.Data))
-	}
-
-	return &klv.blockDep.txDepOnce[txnum]
-}
-
 func (klv *KeyLevelValidator) extractDependenciesForTx(blockNum, txNum uint64, envelopeBytes []byte) {
 	env, err := protoutil.GetEnvelopeFromBlock(envelopeBytes)
 	if err != nil {
@@ -235,10 +222,17 @@ func (klv *KeyLevelValidator) extractDependenciesForTx(blockNum, txNum uint64, e
 
 // PreValidate implements the function of the StateBasedValidator interface
 func (klv *KeyLevelValidator) PreValidate(txNum uint64, block *common.Block) {
+	klv.blockDep.mutex.Lock()
+	if klv.blockDep.blockNum != block.Header.Number {
+		klv.blockDep.blockNum = block.Header.Number
+		klv.blockDep.txDepOnce = make([]sync.Once, len(block.Data.Data))
+	}
+	klv.blockDep.mutex.Unlock()
+
 	for i := int64(txNum); i >= 0; i-- {
 		txPosition := uint64(i)
 
-		klv.invokeOnce(block, txPosition).Do(
+		klv.blockDep.txDepOnce[i].Do(
 			func() {
 				klv.extractDependenciesForTx(block.Header.Number, txPosition, block.Data.Data[txPosition])
 			})

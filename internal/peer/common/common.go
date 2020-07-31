@@ -21,13 +21,12 @@ import (
 	"github.com/hyperledger/fabric/bccsp/factory"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/flogging"
-	"github.com/hyperledger/fabric/core/comm"
 	"github.com/hyperledger/fabric/core/config"
 	"github.com/hyperledger/fabric/core/scc/cscc"
+	"github.com/hyperledger/fabric/internal/pkg/comm"
 	"github.com/hyperledger/fabric/msp"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -95,7 +94,6 @@ func init() {
 
 // InitConfig initializes viper config
 func InitConfig(cmdRoot string) error {
-
 	err := config.InitViper(nil, cmdRoot)
 	if err != nil {
 		return err
@@ -121,9 +119,10 @@ func InitConfig(cmdRoot string) error {
 func InitCrypto(mspMgrConfigDir, localMSPID, localMSPType string) error {
 	// Check whether msp folder exists
 	fi, err := os.Stat(mspMgrConfigDir)
-	if os.IsNotExist(err) || !fi.IsDir() {
-		// No need to try to load MSP from folder which is not available
-		return errors.Errorf("cannot init crypto, folder \"%s\" does not exist", mspMgrConfigDir)
+	if err != nil {
+		return errors.Errorf("cannot init crypto, specified path \"%s\" does not exist or cannot be accessed: %v", mspMgrConfigDir, err)
+	} else if !fi.IsDir() {
+		return errors.Errorf("cannot init crypto, specified path \"%s\" is not a directory", mspMgrConfigDir)
 	}
 	// Check whether localMSPID exists
 	if localMSPID == "" {
@@ -133,11 +132,8 @@ func InitCrypto(mspMgrConfigDir, localMSPID, localMSPType string) error {
 	// Init the BCCSP
 	SetBCCSPKeystorePath()
 	bccspConfig := factory.GetDefaultOpts()
-	if config := viper.Get("peer.BCCSP"); config != nil {
-		err = mapstructure.Decode(config, bccspConfig)
-		if err != nil {
-			return errors.WithMessage(err, "could not decode peer BCCSP configuration")
-		}
+	if err := viper.UnmarshalKey("peer.BCCSP", &bccspConfig); err != nil {
+		return errors.WithMessage(err, "could not decode peer BCCSP configuration")
 	}
 
 	err = mspmgmt.LoadLocalMspWithType(mspMgrConfigDir, bccspConfig, localMSPID, localMSPType)
@@ -149,10 +145,12 @@ func InitCrypto(mspMgrConfigDir, localMSPID, localMSPType string) error {
 }
 
 // SetBCCSPKeystorePath sets the file keystore path for the SW BCCSP provider
-// to an absolute path relative to the config file
+// to an absolute path relative to the config file.
 func SetBCCSPKeystorePath() {
-	viper.Set("peer.BCCSP.SW.FileKeyStore.KeyStore",
-		config.GetPath("peer.BCCSP.SW.FileKeyStore.KeyStore"))
+	key := "peer.BCCSP.SW.FileKeyStore.KeyStore"
+	if ksPath := config.GetPath(key); ksPath != "" {
+		viper.Set(key, ksPath)
+	}
 }
 
 // GetDefaultSigner return a default Signer(Default/PEER) for cli
@@ -304,6 +302,12 @@ func InitCmd(cmd *cobra.Command, args []string) {
 		Writer:  logOutput,
 		LogSpec: loggingSpec,
 	})
+
+	// chaincode packaging does not require material from the local MSP
+	if cmd.CommandPath() == "peer lifecycle chaincode package" {
+		mainLogger.Debug("peer lifecycle chaincode package does not need to init crypto")
+		return
+	}
 
 	// Init the MSP
 	var mspMgrConfigDir = config.GetPath("peer.mspConfigPath")

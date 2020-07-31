@@ -28,8 +28,8 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	fake "github.com/hyperledger/fabric/core/peer/mock"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 	peer2 "google.golang.org/grpc/peer"
 )
@@ -126,8 +126,8 @@ type mockChainManager struct {
 	mock.Mock
 }
 
-func (m *mockChainManager) GetChain(chainID string) deliver.Chain {
-	args := m.Called(chainID)
+func (m *mockChainManager) GetChain(channelID string) deliver.Chain {
+	args := m.Called(channelID)
 	return args.Get(0).(deliver.Chain)
 }
 
@@ -179,7 +179,7 @@ type testConfig struct {
 	chaincodeName string
 	txID          string
 	payload       *common.Payload
-	*assert.Assertions
+	*require.Assertions
 }
 
 type testCase struct {
@@ -190,8 +190,8 @@ type testCase struct {
 func TestFilteredBlockResponseSenderIsFiltered(t *testing.T) {
 	var fbrs interface{} = &filteredBlockResponseSender{}
 	filtered, ok := fbrs.(deliver.Filtered)
-	assert.True(t, ok, "should be filtered")
-	assert.True(t, filtered.IsFiltered(), "should return true from IsFiltered")
+	require.True(t, ok, "should be filtered")
+	require.True(t, filtered.IsFiltered(), "should return true from IsFiltered")
 }
 
 func TestEventsServer_DeliverFiltered(t *testing.T) {
@@ -251,14 +251,14 @@ func TestEventsServer_DeliverFiltered(t *testing.T) {
 					return chainManager, deliverServer
 				}
 			}(testConfig{
-				channelID:     "testChainID",
+				channelID:     "testChannelID",
 				eventName:     "testEvent",
 				chaincodeName: "mycc",
 				txID:          "testID",
 				payload: &common.Payload{
 					Header: &common.Header{
 						ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{
-							ChannelId: "testChainID",
+							ChannelId: "testChannelID",
 							Timestamp: util.CreateUtcTimestamp(),
 						}),
 						SignatureHeader: protoutil.MarshalOrPanic(&common.SignatureHeader{}),
@@ -269,7 +269,7 @@ func TestEventsServer_DeliverFiltered(t *testing.T) {
 						Behavior: orderer.SeekInfo_BLOCK_UNTIL_READY,
 					}),
 				},
-				Assertions: assert.New(t),
+				Assertions: require.New(t),
 			}),
 		},
 		{
@@ -324,14 +324,14 @@ func TestEventsServer_DeliverFiltered(t *testing.T) {
 					return chainManager, deliverServer
 				}
 			}(testConfig{
-				channelID:     "testChainID",
+				channelID:     "testChannelID",
 				eventName:     "testEvent",
 				chaincodeName: "mycc",
 				txID:          "testID",
 				payload: &common.Payload{
 					Header: &common.Header{
 						ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{
-							ChannelId: "testChainID",
+							ChannelId: "testChannelID",
 							Timestamp: util.CreateUtcTimestamp(),
 						}),
 						SignatureHeader: protoutil.MarshalOrPanic(&common.SignatureHeader{}),
@@ -342,7 +342,7 @@ func TestEventsServer_DeliverFiltered(t *testing.T) {
 						Behavior: orderer.SeekInfo_BLOCK_UNTIL_READY,
 					}),
 				},
-				Assertions: assert.New(t),
+				Assertions: require.New(t),
 			}),
 		},
 		{
@@ -384,7 +384,7 @@ func TestEventsServer_DeliverFiltered(t *testing.T) {
 					return chainManager, deliverServer
 				}
 			}(testConfig{
-				channelID:     "testChainID",
+				channelID:     "testChannelID",
 				eventName:     "testEvent",
 				chaincodeName: "mycc",
 				txID:          "testID",
@@ -396,7 +396,7 @@ func TestEventsServer_DeliverFiltered(t *testing.T) {
 						Behavior: orderer.SeekInfo_BLOCK_UNTIL_READY,
 					}),
 				},
-				Assertions: assert.New(t),
+				Assertions: require.New(t),
 			}),
 		},
 	}
@@ -414,7 +414,7 @@ func TestEventsServer_DeliverFiltered(t *testing.T) {
 			err := server.DeliverFiltered(deliverServer)
 			wg.Wait()
 			// no error expected
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -486,14 +486,14 @@ func TestEventsServer_DeliverWithPrivateData(t *testing.T) {
 					return chainManager, deliverServer
 				}
 			}(testConfig{
-				channelID:     "testChainID",
+				channelID:     "testChannelID",
 				eventName:     "testEvent",
 				chaincodeName: "mycc",
 				txID:          "testID",
 				payload: &common.Payload{
 					Header: &common.Header{
 						ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{
-							ChannelId: "testChainID",
+							ChannelId: "testChannelID",
 							Timestamp: util.CreateUtcTimestamp(),
 						}),
 						SignatureHeader: protoutil.MarshalOrPanic(&common.SignatureHeader{}),
@@ -504,7 +504,7 @@ func TestEventsServer_DeliverWithPrivateData(t *testing.T) {
 						Behavior: orderer.SeekInfo_BLOCK_UNTIL_READY,
 					}),
 				},
-				Assertions: assert.New(t),
+				Assertions: require.New(t),
 			}),
 		},
 		{
@@ -541,7 +541,7 @@ func TestEventsServer_DeliverWithPrivateData(t *testing.T) {
 					return chainManager, deliverServer
 				}
 			}(testConfig{
-				channelID:     "testChainID",
+				channelID:     "testChannelID",
 				eventName:     "testEvent",
 				chaincodeName: "mycc",
 				txID:          "testID",
@@ -553,7 +553,7 @@ func TestEventsServer_DeliverWithPrivateData(t *testing.T) {
 						Behavior: orderer.SeekInfo_BLOCK_UNTIL_READY,
 					}),
 				},
-				Assertions: assert.New(t),
+				Assertions: require.New(t),
 			}),
 		},
 	}
@@ -574,7 +574,7 @@ func TestEventsServer_DeliverWithPrivateData(t *testing.T) {
 			err := server.DeliverWithPrivateData(deliverServer)
 			wg.Wait()
 			// no error expected
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		})
 	}
 }

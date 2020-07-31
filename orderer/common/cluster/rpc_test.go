@@ -21,13 +21,12 @@ import (
 	"github.com/hyperledger/fabric/orderer/common/cluster"
 	"github.com/hyperledger/fabric/orderer/common/cluster/mocks"
 	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )
 
 func TestRPCChangeDestination(t *testing.T) {
-	t.Parallel()
 	// We send a Submit() to 2 different nodes - 1 and 2.
 	// The first invocation of Submit() establishes a stream with node 1
 	// and the second establishes a stream with node 2.
@@ -92,7 +91,6 @@ func TestRPCChangeDestination(t *testing.T) {
 }
 
 func TestSend(t *testing.T) {
-	t.Parallel()
 	submitRequest := &orderer.SubmitRequest{Channel: "mychannel"}
 	submitResponse := &orderer.StepResponse{
 		Payload: &orderer.StepResponse_SubmitRes{
@@ -223,17 +221,15 @@ func TestSend(t *testing.T) {
 				Comm:          comm,
 			}
 
-			var err error
-
-			err = testCase.method(rpc)
+			err := testCase.method(rpc)
 			if testCase.remoteError == nil && testCase.stepReturns[1] == nil {
 				<-sent
 			}
 
 			if testCase.stepReturns[1] == nil && testCase.remoteError == nil {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			} else {
-				assert.EqualError(t, err, testCase.expectedErr)
+				require.EqualError(t, err, testCase.expectedErr)
 			}
 
 			if testCase.remoteError == nil && testCase.expectedErr == "" && isSend {
@@ -243,8 +239,8 @@ func TestSend(t *testing.T) {
 				err := testCase.method(rpc)
 				<-sent
 
-				assert.NoError(t, err)
-				assert.Equal(t, 2, int(atomic.LoadUint32(&sendCalls)))
+				require.NoError(t, err)
+				require.Equal(t, 2, int(atomic.LoadUint32(&sendCalls)))
 				client.AssertNumberOfCalls(t, "Step", 1)
 			}
 		})
@@ -257,8 +253,6 @@ func TestRPCGarbageCollection(t *testing.T) {
 	// Afterwards - make that stream be aborted, and send a message to a different
 	// remote node.
 	// The first stream should be cleaned from the mapping.
-
-	t.Parallel()
 
 	comm := &mocks.Communicator{}
 	client := &mocks.ClusterClient{}
@@ -301,8 +295,8 @@ func TestRPCGarbageCollection(t *testing.T) {
 	// Wait for the message to arrive
 	sent.Wait()
 	// Ensure the stream is initialized in the mapping
-	assert.Len(t, mapping[cluster.SubmitOperation], 1)
-	assert.Equal(t, uint64(1), mapping[cluster.SubmitOperation][1].ID)
+	require.Len(t, mapping[cluster.SubmitOperation], 1)
+	require.Equal(t, uint64(1), mapping[cluster.SubmitOperation][1].ID)
 	// And the underlying gRPC stream indeed had Send invoked on it.
 	stream.AssertNumberOfCalls(t, "Send", 1)
 
@@ -310,8 +304,8 @@ func TestRPCGarbageCollection(t *testing.T) {
 	remote.Abort()
 
 	// The stream still exists, as it is not cleaned yet.
-	assert.Len(t, mapping[cluster.SubmitOperation], 1)
-	assert.Equal(t, uint64(1), mapping[cluster.SubmitOperation][1].ID)
+	require.Len(t, mapping[cluster.SubmitOperation], 1)
+	require.Equal(t, uint64(1), mapping[cluster.SubmitOperation][1].ID)
 
 	// Prepare for the next transmission.
 	defineMocks(2)
@@ -319,6 +313,6 @@ func TestRPCGarbageCollection(t *testing.T) {
 	// Send a message to a different node.
 	rpc.SendSubmit(2, &orderer.SubmitRequest{Channel: "mychannel"})
 	// The mapping should be now cleaned from the previous stream.
-	assert.Len(t, mapping[cluster.SubmitOperation], 1)
-	assert.Equal(t, uint64(2), mapping[cluster.SubmitOperation][2].ID)
+	require.Len(t, mapping[cluster.SubmitOperation], 1)
+	require.Equal(t, uint64(2), mapping[cluster.SubmitOperation][2].ID)
 }

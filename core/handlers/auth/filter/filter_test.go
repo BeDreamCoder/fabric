@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go/peer"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type mockEndorserServer struct {
@@ -27,6 +27,6 @@ func TestFilter(t *testing.T) {
 	auth := NewFilter()
 	nextEndorser := &mockEndorserServer{}
 	auth.Init(nextEndorser)
-	auth.ProcessProposal(nil, nil)
-	assert.True(t, nextEndorser.invoked)
+	auth.ProcessProposal(context.Background(), nil)
+	require.True(t, nextEndorser.invoked)
 }

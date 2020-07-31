@@ -13,10 +13,11 @@ import (
 	mb "github.com/hyperledger/fabric-protos-go/msp"
 	"github.com/hyperledger/fabric/common/cauthdsl"
 	"github.com/hyperledger/fabric/common/policies"
+	"github.com/hyperledger/fabric/common/policydsl"
 	"github.com/hyperledger/fabric/msp"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestImplicitMetaPolicy_Convert(t *testing.T) {
@@ -28,7 +29,7 @@ func TestImplicitMetaPolicy_Convert(t *testing.T) {
 
 	p1, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule:    cauthdsl.SignedBy(0),
+		Rule:    policydsl.SignedBy(0),
 		Identities: []*mb.MSPPrincipal{
 			{
 				PrincipalClassification: mb.MSPPrincipal_ROLE,
@@ -41,12 +42,12 @@ func TestImplicitMetaPolicy_Convert(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p1)
-	assert.NoError(t, err)
+	require.NotNil(t, p1)
+	require.NoError(t, err)
 
 	p2, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule:    cauthdsl.SignedBy(0),
+		Rule:    policydsl.SignedBy(0),
 		Identities: []*mb.MSPPrincipal{
 			{
 				PrincipalClassification: mb.MSPPrincipal_ROLE,
@@ -59,8 +60,8 @@ func TestImplicitMetaPolicy_Convert(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p2)
-	assert.NoError(t, err)
+	require.NotNil(t, p2)
+	require.NoError(t, err)
 
 	p := &policies.PolicyLogger{
 		Policy: &policies.ImplicitMetaPolicy{
@@ -71,13 +72,13 @@ func TestImplicitMetaPolicy_Convert(t *testing.T) {
 	}
 
 	spe, err := p.Convert()
-	assert.NoError(t, err)
-	assert.NotNil(t, spe)
-	assert.Equal(t, &cb.SignaturePolicyEnvelope{
+	require.NoError(t, err)
+	require.NotNil(t, spe)
+	require.Equal(t, &cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule: cauthdsl.And(
-			cauthdsl.SignedBy(0),
-			cauthdsl.SignedBy(1),
+		Rule: policydsl.And(
+			policydsl.SignedBy(0),
+			policydsl.SignedBy(1),
 		),
 		Identities: []*mb.MSPPrincipal{
 			{
@@ -111,13 +112,13 @@ func TestImplicitMetaPolicy_Convert1(t *testing.T) {
 
 	pfs := &cauthdsl.EnvelopeBasedPolicyProvider{}
 
-	p1, err := pfs.NewPolicy(cauthdsl.SignedByAnyMember([]string{"A", "B"}))
-	assert.NotNil(t, p1)
-	assert.NoError(t, err)
+	p1, err := pfs.NewPolicy(policydsl.SignedByAnyMember([]string{"A", "B"}))
+	require.NotNil(t, p1)
+	require.NoError(t, err)
 
-	p2, err := pfs.NewPolicy(cauthdsl.SignedByAnyMember([]string{"B"}))
-	assert.NotNil(t, p2)
-	assert.NoError(t, err)
+	p2, err := pfs.NewPolicy(policydsl.SignedByAnyMember([]string{"B"}))
+	require.NotNil(t, p2)
+	require.NoError(t, err)
 
 	p := &policies.ImplicitMetaPolicy{
 		Threshold:     2,
@@ -126,17 +127,17 @@ func TestImplicitMetaPolicy_Convert1(t *testing.T) {
 	}
 
 	spe, err := p.Convert()
-	assert.NoError(t, err)
-	assert.NotNil(t, spe)
-	assert.Equal(t, &cb.SignaturePolicyEnvelope{
+	require.NoError(t, err)
+	require.NotNil(t, spe)
+	require.Equal(t, &cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule: cauthdsl.And(
-			cauthdsl.Or(
-				cauthdsl.SignedBy(0),
-				cauthdsl.SignedBy(1),
+		Rule: policydsl.And(
+			policydsl.Or(
+				policydsl.SignedBy(0),
+				policydsl.SignedBy(1),
 			),
-			cauthdsl.NOutOf(1,
-				[]*cb.SignaturePolicy{cauthdsl.SignedBy(1)},
+			policydsl.NOutOf(1,
+				[]*cb.SignaturePolicy{policydsl.SignedBy(1)},
 			),
 		),
 		Identities: []*mb.MSPPrincipal{
@@ -173,17 +174,17 @@ func TestImplicitMetaPolicy_Convert2(t *testing.T) {
 
 	p1, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule: cauthdsl.NOutOf(1,
+		Rule: policydsl.NOutOf(1,
 			[]*cb.SignaturePolicy{
-				cauthdsl.NOutOf(2,
+				policydsl.NOutOf(2,
 					[]*cb.SignaturePolicy{
-						cauthdsl.SignedBy(0),
-						cauthdsl.SignedBy(1),
+						policydsl.SignedBy(0),
+						policydsl.SignedBy(1),
 					},
 				),
-				cauthdsl.NOutOf(1,
+				policydsl.NOutOf(1,
 					[]*cb.SignaturePolicy{
-						cauthdsl.SignedBy(2),
+						policydsl.SignedBy(2),
 					},
 				),
 			},
@@ -218,15 +219,15 @@ func TestImplicitMetaPolicy_Convert2(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p1)
-	assert.NoError(t, err)
+	require.NotNil(t, p1)
+	require.NoError(t, err)
 
 	p2, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule: cauthdsl.NOutOf(2,
+		Rule: policydsl.NOutOf(2,
 			[]*cb.SignaturePolicy{
-				cauthdsl.SignedBy(0),
-				cauthdsl.SignedBy(1),
+				policydsl.SignedBy(0),
+				policydsl.SignedBy(1),
 			},
 		),
 		Identities: []*mb.MSPPrincipal{
@@ -250,8 +251,8 @@ func TestImplicitMetaPolicy_Convert2(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p2)
-	assert.NoError(t, err)
+	require.NotNil(t, p2)
+	require.NoError(t, err)
 
 	p := &policies.ImplicitMetaPolicy{
 		Threshold:     2,
@@ -260,30 +261,30 @@ func TestImplicitMetaPolicy_Convert2(t *testing.T) {
 	}
 
 	spe, err := p.Convert()
-	assert.NoError(t, err)
-	assert.NotNil(t, spe)
-	assert.Equal(t, &cb.SignaturePolicyEnvelope{
+	require.NoError(t, err)
+	require.NotNil(t, spe)
+	require.Equal(t, &cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule: cauthdsl.And(
-			cauthdsl.NOutOf(1,
+		Rule: policydsl.And(
+			policydsl.NOutOf(1,
 				[]*cb.SignaturePolicy{
-					cauthdsl.NOutOf(2,
+					policydsl.NOutOf(2,
 						[]*cb.SignaturePolicy{
-							cauthdsl.SignedBy(0),
-							cauthdsl.SignedBy(1),
+							policydsl.SignedBy(0),
+							policydsl.SignedBy(1),
 						},
 					),
-					cauthdsl.NOutOf(1,
+					policydsl.NOutOf(1,
 						[]*cb.SignaturePolicy{
-							cauthdsl.SignedBy(2),
+							policydsl.SignedBy(2),
 						},
 					),
 				},
 			),
-			cauthdsl.NOutOf(2,
+			policydsl.NOutOf(2,
 				[]*cb.SignaturePolicy{
-					cauthdsl.SignedBy(3),
-					cauthdsl.SignedBy(0),
+					policydsl.SignedBy(3),
+					policydsl.SignedBy(0),
 				},
 			),
 		),
@@ -339,7 +340,7 @@ func TestImplicitMetaPolicy_Convert3(t *testing.T) {
 
 	p1, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule:    cauthdsl.SignedBy(0),
+		Rule:    policydsl.SignedBy(0),
 		Identities: []*mb.MSPPrincipal{
 			{
 				PrincipalClassification: mb.MSPPrincipal_ROLE,
@@ -352,12 +353,12 @@ func TestImplicitMetaPolicy_Convert3(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p1)
-	assert.NoError(t, err)
+	require.NotNil(t, p1)
+	require.NoError(t, err)
 
 	p2, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule:    cauthdsl.SignedBy(0),
+		Rule:    policydsl.SignedBy(0),
 		Identities: []*mb.MSPPrincipal{
 			{
 				PrincipalClassification: mb.MSPPrincipal_ROLE,
@@ -370,12 +371,12 @@ func TestImplicitMetaPolicy_Convert3(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p2)
-	assert.NoError(t, err)
+	require.NotNil(t, p2)
+	require.NoError(t, err)
 
 	p3, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule:    cauthdsl.SignedBy(0),
+		Rule:    policydsl.SignedBy(0),
 		Identities: []*mb.MSPPrincipal{
 			{
 				PrincipalClassification: mb.MSPPrincipal_ROLE,
@@ -388,8 +389,8 @@ func TestImplicitMetaPolicy_Convert3(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p3)
-	assert.NoError(t, err)
+	require.NotNil(t, p3)
+	require.NoError(t, err)
 
 	mp1 := &policies.ImplicitMetaPolicy{
 		Threshold:     2,
@@ -404,16 +405,16 @@ func TestImplicitMetaPolicy_Convert3(t *testing.T) {
 	}
 
 	spe, err := mp2.Convert()
-	assert.NoError(t, err)
-	assert.NotNil(t, spe)
-	assert.Equal(t, &cb.SignaturePolicyEnvelope{
+	require.NoError(t, err)
+	require.NotNil(t, spe)
+	require.Equal(t, &cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule: cauthdsl.And(
-			cauthdsl.And(
-				cauthdsl.SignedBy(0),
-				cauthdsl.SignedBy(1),
+		Rule: policydsl.And(
+			policydsl.And(
+				policydsl.SignedBy(0),
+				policydsl.SignedBy(1),
 			),
-			cauthdsl.SignedBy(2),
+			policydsl.SignedBy(2),
 		),
 		Identities: []*mb.MSPPrincipal{
 			{
@@ -458,7 +459,7 @@ func TestImplicitMetaPolicy_Convert4(t *testing.T) {
 
 	p1, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule:    cauthdsl.SignedBy(0),
+		Rule:    policydsl.SignedBy(0),
 		Identities: []*mb.MSPPrincipal{
 			{
 				PrincipalClassification: mb.MSPPrincipal_ROLE,
@@ -471,12 +472,12 @@ func TestImplicitMetaPolicy_Convert4(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p1)
-	assert.NoError(t, err)
+	require.NotNil(t, p1)
+	require.NoError(t, err)
 
 	p2, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule:    cauthdsl.SignedBy(0),
+		Rule:    policydsl.SignedBy(0),
 		Identities: []*mb.MSPPrincipal{
 			{
 				PrincipalClassification: mb.MSPPrincipal_ROLE,
@@ -489,12 +490,12 @@ func TestImplicitMetaPolicy_Convert4(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p2)
-	assert.NoError(t, err)
+	require.NotNil(t, p2)
+	require.NoError(t, err)
 
 	p3, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule:    cauthdsl.SignedBy(0),
+		Rule:    policydsl.SignedBy(0),
 		Identities: []*mb.MSPPrincipal{
 			{
 				PrincipalClassification: mb.MSPPrincipal_ROLE,
@@ -507,8 +508,8 @@ func TestImplicitMetaPolicy_Convert4(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p3)
-	assert.NoError(t, err)
+	require.NotNil(t, p3)
+	require.NoError(t, err)
 
 	mp1 := &policies.ImplicitMetaPolicy{
 		Threshold:     2,
@@ -523,16 +524,16 @@ func TestImplicitMetaPolicy_Convert4(t *testing.T) {
 	}
 
 	spe, err := mp2.Convert()
-	assert.NoError(t, err)
-	assert.NotNil(t, spe)
-	assert.Equal(t, &cb.SignaturePolicyEnvelope{
+	require.NoError(t, err)
+	require.NotNil(t, spe)
+	require.Equal(t, &cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule: cauthdsl.And(
-			cauthdsl.And(
-				cauthdsl.SignedBy(0),
-				cauthdsl.SignedBy(0),
+		Rule: policydsl.And(
+			policydsl.And(
+				policydsl.SignedBy(0),
+				policydsl.SignedBy(0),
 			),
-			cauthdsl.SignedBy(0),
+			policydsl.SignedBy(0),
 		),
 		Identities: []*mb.MSPPrincipal{
 			{
@@ -560,17 +561,17 @@ func TestImplicitMetaPolicy_Convert5(t *testing.T) {
 
 	p1, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule: cauthdsl.NOutOf(1,
+		Rule: policydsl.NOutOf(1,
 			[]*cb.SignaturePolicy{
-				cauthdsl.NOutOf(2,
+				policydsl.NOutOf(2,
 					[]*cb.SignaturePolicy{
-						cauthdsl.SignedBy(0),
-						cauthdsl.SignedBy(1),
+						policydsl.SignedBy(0),
+						policydsl.SignedBy(1),
 					},
 				),
-				cauthdsl.NOutOf(1,
+				policydsl.NOutOf(1,
 					[]*cb.SignaturePolicy{
-						cauthdsl.SignedBy(2),
+						policydsl.SignedBy(2),
 					},
 				),
 			},
@@ -605,15 +606,15 @@ func TestImplicitMetaPolicy_Convert5(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p1)
-	assert.NoError(t, err)
+	require.NotNil(t, p1)
+	require.NoError(t, err)
 
 	p2, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule: cauthdsl.NOutOf(2,
+		Rule: policydsl.NOutOf(2,
 			[]*cb.SignaturePolicy{
-				cauthdsl.SignedBy(0),
-				cauthdsl.SignedBy(1),
+				policydsl.SignedBy(0),
+				policydsl.SignedBy(1),
 			},
 		),
 		Identities: []*mb.MSPPrincipal{
@@ -637,8 +638,8 @@ func TestImplicitMetaPolicy_Convert5(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p2)
-	assert.NoError(t, err)
+	require.NotNil(t, p2)
+	require.NoError(t, err)
 
 	p := &policies.ImplicitMetaPolicy{
 		Threshold:     2,
@@ -647,30 +648,30 @@ func TestImplicitMetaPolicy_Convert5(t *testing.T) {
 	}
 
 	spe, err := p.Convert()
-	assert.NoError(t, err)
-	assert.NotNil(t, spe)
-	assert.Equal(t, &cb.SignaturePolicyEnvelope{
+	require.NoError(t, err)
+	require.NotNil(t, spe)
+	require.Equal(t, &cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule: cauthdsl.And(
-			cauthdsl.NOutOf(1,
+		Rule: policydsl.And(
+			policydsl.NOutOf(1,
 				[]*cb.SignaturePolicy{
-					cauthdsl.NOutOf(2,
+					policydsl.NOutOf(2,
 						[]*cb.SignaturePolicy{
-							cauthdsl.SignedBy(0),
-							cauthdsl.SignedBy(1),
+							policydsl.SignedBy(0),
+							policydsl.SignedBy(1),
 						},
 					),
-					cauthdsl.NOutOf(1,
+					policydsl.NOutOf(1,
 						[]*cb.SignaturePolicy{
-							cauthdsl.SignedBy(0),
+							policydsl.SignedBy(0),
 						},
 					),
 				},
 			),
-			cauthdsl.NOutOf(2,
+			policydsl.NOutOf(2,
 				[]*cb.SignaturePolicy{
-					cauthdsl.SignedBy(2),
-					cauthdsl.SignedBy(0),
+					policydsl.SignedBy(2),
+					policydsl.SignedBy(0),
 				},
 			),
 		),
@@ -718,17 +719,17 @@ func TestImplicitMetaPolicy_Convert6(t *testing.T) {
 
 	p1, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule: cauthdsl.NOutOf(1,
+		Rule: policydsl.NOutOf(1,
 			[]*cb.SignaturePolicy{
-				cauthdsl.NOutOf(2,
+				policydsl.NOutOf(2,
 					[]*cb.SignaturePolicy{
-						cauthdsl.SignedBy(0),
-						cauthdsl.SignedBy(1),
+						policydsl.SignedBy(0),
+						policydsl.SignedBy(1),
 					},
 				),
-				cauthdsl.NOutOf(1,
+				policydsl.NOutOf(1,
 					[]*cb.SignaturePolicy{
-						cauthdsl.SignedBy(2),
+						policydsl.SignedBy(2),
 					},
 				),
 			},
@@ -763,15 +764,15 @@ func TestImplicitMetaPolicy_Convert6(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p1)
-	assert.NoError(t, err)
+	require.NotNil(t, p1)
+	require.NoError(t, err)
 
 	p2, err := pfs.NewPolicy(&cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule: cauthdsl.NOutOf(2,
+		Rule: policydsl.NOutOf(2,
 			[]*cb.SignaturePolicy{
-				cauthdsl.SignedBy(0),
-				cauthdsl.SignedBy(1),
+				policydsl.SignedBy(0),
+				policydsl.SignedBy(1),
 			},
 		),
 		Identities: []*mb.MSPPrincipal{
@@ -795,8 +796,8 @@ func TestImplicitMetaPolicy_Convert6(t *testing.T) {
 			},
 		},
 	})
-	assert.NotNil(t, p2)
-	assert.NoError(t, err)
+	require.NotNil(t, p2)
+	require.NoError(t, err)
 
 	p := &policies.ImplicitMetaPolicy{
 		Threshold:     2,
@@ -805,30 +806,30 @@ func TestImplicitMetaPolicy_Convert6(t *testing.T) {
 	}
 
 	spe, err := p.Convert()
-	assert.NoError(t, err)
-	assert.NotNil(t, spe)
-	assert.Equal(t, &cb.SignaturePolicyEnvelope{
+	require.NoError(t, err)
+	require.NotNil(t, spe)
+	require.Equal(t, &cb.SignaturePolicyEnvelope{
 		Version: 0,
-		Rule: cauthdsl.And(
-			cauthdsl.NOutOf(1,
+		Rule: policydsl.And(
+			policydsl.NOutOf(1,
 				[]*cb.SignaturePolicy{
-					cauthdsl.NOutOf(2,
+					policydsl.NOutOf(2,
 						[]*cb.SignaturePolicy{
-							cauthdsl.SignedBy(0),
-							cauthdsl.SignedBy(1),
+							policydsl.SignedBy(0),
+							policydsl.SignedBy(1),
 						},
 					),
-					cauthdsl.NOutOf(1,
+					policydsl.NOutOf(1,
 						[]*cb.SignaturePolicy{
-							cauthdsl.SignedBy(0),
+							policydsl.SignedBy(0),
 						},
 					),
 				},
 			),
-			cauthdsl.NOutOf(2,
+			policydsl.NOutOf(2,
 				[]*cb.SignaturePolicy{
-					cauthdsl.SignedBy(0),
-					cauthdsl.SignedBy(0),
+					policydsl.SignedBy(0),
+					policydsl.SignedBy(0),
 				},
 			),
 		),
@@ -877,8 +878,8 @@ func TestImplicitMetaPolicy_Convert7(t *testing.T) {
 	}
 
 	spe, err := p.Convert()
-	assert.EqualError(t, err, "subpolicy number 0 type *policies_test.inconvertiblePolicy of policy mypolicy is not convertible")
-	assert.Nil(t, spe)
+	require.EqualError(t, err, "subpolicy number 0 type *policies_test.inconvertiblePolicy of policy mypolicy is not convertible")
+	require.Nil(t, spe)
 }
 
 type convertFailurePolicy struct{}
@@ -909,6 +910,6 @@ func TestImplicitMetaPolicy_Convert8(t *testing.T) {
 	}
 
 	spe, err := p.Convert()
-	assert.EqualError(t, err, "failed to convert subpolicy number 0 of policy mypolicy: nope")
-	assert.Nil(t, spe)
+	require.EqualError(t, err, "failed to convert subpolicy number 0 of policy mypolicy: nope")
+	require.Nil(t, spe)
 }

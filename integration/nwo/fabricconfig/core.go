@@ -50,6 +50,7 @@ type Peer struct {
 	Handlers               *Handlers       `yaml:"handlers,omitempty"`
 	ValidatorPoolSize      int             `yaml:"validatorPoolSize,omitempty"`
 	Discovery              *Discovery      `yaml:"discovery,omitempty"`
+	Limits                 *Limits         `yaml:"limits,omitempty"`
 
 	ExtraProperties map[string]interface{} `yaml:",inline,omitempty"`
 }
@@ -92,6 +93,8 @@ type Gossip struct {
 	AliveTimeInterval          time.Duration   `yaml:"aliveTimeInterval,omitempty"`
 	AliveExpirationTimeout     time.Duration   `yaml:"aliveExpirationTimeout,omitempty"`
 	ReconnectInterval          time.Duration   `yaml:"reconnectInterval,omitempty"`
+	MsgExpirationFactor        int             `yaml:"msgExpirationFactor,omitempty"`
+	MaxConnectionAttempts      int             `yaml:"maxConnectionAttempts,omitempty"`
 	ExternalEndpoint           string          `yaml:"externalEndpoint,omitempty"`
 	Election                   *GossipElection `yaml:"election,omitempty"`
 	PvtData                    *GossipPvtData  `yaml:"pvtData,omitempty"`
@@ -106,14 +109,21 @@ type GossipElection struct {
 }
 
 type GossipPvtData struct {
-	PullRetryThreshold                         time.Duration `yaml:"pullRetryThreshold,omitempty"`
-	TransientstoreMaxBlockRetention            int           `yaml:"transientstoreMaxBlockRetention,omitempty"`
-	PushAckTimeout                             time.Duration `yaml:"pushAckTimeout,omitempty"`
-	BtlPullMargin                              int           `yaml:"btlPullMargin,omitempty"`
-	ReconcileBatchSize                         int           `yaml:"reconcileBatchSize,omitempty"`
-	ReconcileSleepInterval                     time.Duration `yaml:"reconcileSleepInterval,omitempty"`
-	ReconciliationEnabled                      bool          `yaml:"reconciliationEnabled"`
-	SkipPullingInvalidTransactionsDuringCommit bool          `yaml:"skipPullingInvalidTransactionsDuringCommit"`
+	PullRetryThreshold                         time.Duration                   `yaml:"pullRetryThreshold,omitempty"`
+	TransientstoreMaxBlockRetention            int                             `yaml:"transientstoreMaxBlockRetention,omitempty"`
+	PushAckTimeout                             time.Duration                   `yaml:"pushAckTimeout,omitempty"`
+	BtlPullMargin                              int                             `yaml:"btlPullMargin,omitempty"`
+	ReconcileBatchSize                         int                             `yaml:"reconcileBatchSize,omitempty"`
+	ReconcileSleepInterval                     time.Duration                   `yaml:"reconcileSleepInterval,omitempty"`
+	ReconciliationEnabled                      bool                            `yaml:"reconciliationEnabled"`
+	SkipPullingInvalidTransactionsDuringCommit bool                            `yaml:"skipPullingInvalidTransactionsDuringCommit"`
+	ImplicitCollDisseminationPolicy            ImplicitCollDisseminationPolicy `yaml:"implicitCollectionDisseminationPolicy"`
+}
+
+type ImplicitCollDisseminationPolicy struct {
+	RequiredPeerCount int `yaml:"requiredPeerCount,omitempty"`
+	// do not tag omitempty in order to override MaxPeerCount default with 0
+	MaxPeerCount int `yaml:"maxPeerCount"`
 }
 
 type GossipState struct {
@@ -160,11 +170,20 @@ type Authentication struct {
 type BCCSP struct {
 	Default string            `yaml:"Default,omitempty"`
 	SW      *SoftwareProvider `yaml:"SW,omitempty"`
+	PKCS11  *PKCS11           `yaml:"PKCS11,omitempty"`
 }
 
 type SoftwareProvider struct {
 	Hash     string `yaml:"Hash,omitempty"`
 	Security int    `yaml:"Security,omitempty"`
+}
+
+type PKCS11 struct {
+	Hash     string `yaml:"Hash,omitempty"`
+	Security int    `yaml:"Security,omitempty"`
+	Pin      string `yaml:"Pin,omitempty"`
+	Label    string `yaml:"Label,omitempty"`
+	Library  string `yaml:"Library,omitempty"`
 }
 
 type DeliveryClient struct {
@@ -203,6 +222,15 @@ type Discovery struct {
 	AuthCacheMaxSize             int     `yaml:"authCacheMaxSize,omitempty"`
 	AuthCachePurgeRetentionRatio float64 `yaml:"authCachePurgeRetentionRatio"`
 	OrgMembersAllowedAccess      bool    `yaml:"orgMembersAllowedAccess"`
+}
+
+type Limits struct {
+	Concurrency *Concurrency `yaml:"concurrency,omitempty"`
+}
+
+type Concurrency struct {
+	EndorserService int `yaml:"endorserService,omitempty"`
+	DeliverService  int `yaml:"deliverService,omitempty"`
 }
 
 type VM struct {
@@ -250,7 +278,7 @@ type Node struct {
 }
 
 type ExternalBuilder struct {
-	EnvironmentWhitelist []string `yaml:"environmentWhitelist,omitempty"`
+	PropagateEnvironment []string `yaml:"propagateEnvironment,omitempty"`
 	Name                 string   `yaml:"name,omitempty"`
 	Path                 string   `yaml:"path,omitempty"`
 }

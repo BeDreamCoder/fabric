@@ -14,7 +14,7 @@ import (
 	"github.com/hyperledger/fabric/gossip/metrics"
 	"github.com/hyperledger/fabric/gossip/metrics/mocks"
 	"github.com/hyperledger/fabric/gossip/util"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func newCommInstanceWithMetrics(t *testing.T, sec *naiveSecProvider, metrics *metrics.CommMetrics) (c Comm, port int) {
@@ -24,8 +24,6 @@ func newCommInstanceWithMetrics(t *testing.T, sec *naiveSecProvider, metrics *me
 }
 
 func TestMetrics(t *testing.T) {
-	t.Parallel()
-
 	testMetricProvider := mocks.TestUtilConstructMetricProvider()
 
 	var overflown uint32
@@ -67,21 +65,20 @@ func TestMetrics(t *testing.T) {
 		}
 	}
 
-	assert.EqualValues(t,
+	require.EqualValues(t,
 		1,
 		testMetricProvider.FakeSentMessages.AddArgsForCall(0),
 	)
 
-	assert.EqualValues(t,
+	require.EqualValues(t,
 		1,
 		testMetricProvider.FakeReceivedMessages.AddArgsForCall(0),
 	)
 
-	assert.EqualValues(t,
+	require.EqualValues(t,
 		1,
 		testMetricProvider.FakeBufferOverflow.AddArgsForCall(0),
 	)
 
-	assert.Equal(t, uint32(1), atomic.LoadUint32(&overflown))
-
+	require.Equal(t, uint32(1), atomic.LoadUint32(&overflown))
 }

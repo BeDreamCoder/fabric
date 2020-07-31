@@ -20,7 +20,7 @@ To fork a repository:
 .. image:: ../images/fork.png
    :scale: 50%
 
-- Your browser will automatically take you to the forked repostiory within
+- Your browser will automatically take you to the forked repository within
   your personal GitHub account once the forking process has complete
 
 You can now clone your personal fork to your local machine.
@@ -117,8 +117,8 @@ the GitHub repository. To create a feature branch, perform the following steps:
 
 Now that you have created a local feature branch, you can perform your updates.
 
-Commiting and Pushing Changes to Your Forked Repository
--------------------------------------------------------
+Committing and Pushing Changes to Your Forked Repository
+--------------------------------------------------------
 
 Once you have completed the work you intend to perform in your local feature branch,
 you can commit this code and push it to your forked repository to save its state.
@@ -140,8 +140,13 @@ Perform the following steps to commit and push your code to your forked reposito
    git add <file1> <file2>
 
 - You can now create your commit containing the changes you just added. Your commit
-  message should contain meaningingful information as to why this work was completed,
-  as well as the Jira number in the commit header:
+  message must contain the following information:
+
+  - one line summary of the work in this commit as title, followed by an empty line
+  - in the commit message body, explain why this change is needed, and how you approached it.
+    This helps reviewers better understand your code and often speeds up the review process.
+  - link to JIRA item or JIRA number, i.e. FAB-XXXXX
+  - (optional) if no new tests are added, how the code is tested
 
 .. code::
 

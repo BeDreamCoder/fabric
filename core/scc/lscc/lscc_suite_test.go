@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-chaincode-go/shim"
+	commonledger "github.com/hyperledger/fabric/common/ledger"
 	"github.com/hyperledger/fabric/core/common/ccprovider"
 	"github.com/hyperledger/fabric/core/common/sysccprovider"
 	"github.com/hyperledger/fabric/core/ledger"
@@ -23,7 +24,7 @@ type chaincodeBuilder interface {
 	lscc.ChaincodeBuilder
 }
 
-//go:generate counterfeiter -o mock/sysccprovider.go --fake-name SystemChaincodeProvider . systemChaincodeProvider
+//go:generate counterfeiter -o mock/system_chaincode_provider.go --fake-name SystemChaincodeProvider . systemChaincodeProvider
 type systemChaincodeProvider interface {
 	sysccprovider.SystemChaincodeProvider
 }
@@ -51,6 +52,11 @@ type chaincodeStub interface {
 //go:generate counterfeiter -o mock/state_query_iterator.go --fake-name StateQueryIterator . stateQueryIterator
 type stateQueryIterator interface {
 	shim.StateQueryIteratorInterface
+}
+
+//go:generate counterfeiter -o mock/results_iterator.go --fake-name ResultsIterator . resultsIterator
+type resultsIterator interface {
+	commonledger.ResultsIterator
 }
 
 func TestLscc(t *testing.T) {

@@ -1,20 +1,11 @@
 // +build pkcs11
 
 /*
-Copyright IBM Corp. 2017 All Rights Reserved.
+Copyright IBM Corp. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-		 http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+SPDX-License-Identifier: Apache-2.0
 */
+
 package factory
 
 import (
@@ -22,68 +13,63 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric/bccsp/pkcs11"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestInitFactories(t *testing.T) {
+func TestExportedInitFactories(t *testing.T) {
 	// Reset errors from previous negative test runs
-	factoriesInitError = nil
+	factoriesInitError = initFactories(nil)
 
 	err := InitFactories(nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
-func TestSetFactories(t *testing.T) {
-	err := setFactories(nil)
-	assert.NoError(t, err)
+func TestInitFactories(t *testing.T) {
+	err := initFactories(nil)
+	require.NoError(t, err)
 
-	err = setFactories(&FactoryOpts{})
-	assert.NoError(t, err)
+	err = initFactories(&FactoryOpts{})
+	require.NoError(t, err)
 }
 
-func TestSetFactoriesInvalidArgs(t *testing.T) {
-	err := setFactories(&FactoryOpts{
-		ProviderName: "SW",
-		SwOpts:       &SwOpts{},
+func TestInitFactoriesInvalidArgs(t *testing.T) {
+	err := initFactories(&FactoryOpts{
+		Default: "SW",
+		SW:      &SwOpts{},
 	})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Failed initializing SW.BCCSP")
+	require.EqualError(t, err, "Failed initializing SW.BCCSP: Could not initialize BCCSP SW [Failed initializing configuration at [0,]: Hash Family not supported []]")
 
-	err = setFactories(&FactoryOpts{
-		ProviderName: "PKCS11",
-		Pkcs11Opts:   &pkcs11.PKCS11Opts{},
+	err = initFactories(&FactoryOpts{
+		Default: "PKCS11",
+		PKCS11:  &pkcs11.PKCS11Opts{},
 	})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Failed initializing PKCS11.BCCSP")
+	require.EqualError(t, err, "Failed initializing PKCS11.BCCSP: Could not initialize BCCSP PKCS11 [Failed initializing configuration: Hash Family not supported []]")
 }
 
 func TestGetBCCSPFromOpts(t *testing.T) {
 	opts := GetDefaultOpts()
-	opts.SwOpts.FileKeystore = &FileKeystoreOpts{KeyStorePath: os.TempDir()}
-	opts.SwOpts.Ephemeral = false
+	opts.SW.FileKeystore = &FileKeystoreOpts{KeyStorePath: os.TempDir()}
 	csp, err := GetBCCSPFromOpts(opts)
-	assert.NoError(t, err)
-	assert.NotNil(t, csp)
+	require.NoError(t, err)
+	require.NotNil(t, csp)
 
 	lib, pin, label := pkcs11.FindPKCS11Lib()
 	csp, err = GetBCCSPFromOpts(&FactoryOpts{
-		ProviderName: "PKCS11",
-		Pkcs11Opts: &pkcs11.PKCS11Opts{
-			SecLevel:   256,
-			HashFamily: "SHA2",
-			Ephemeral:  true,
-			Library:    lib,
-			Pin:        pin,
-			Label:      label,
+		Default: "PKCS11",
+		PKCS11: &pkcs11.PKCS11Opts{
+			Security: 256,
+			Hash:     "SHA2",
+			Library:  lib,
+			Pin:      pin,
+			Label:    label,
 		},
 	})
-	assert.NoError(t, err)
-	assert.NotNil(t, csp)
+	require.NoError(t, err)
+	require.NotNil(t, csp)
 
 	csp, err = GetBCCSPFromOpts(&FactoryOpts{
-		ProviderName: "BadName",
+		Default: "BadName",
 	})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Could not find BCCSP, no 'BadName' provider")
-	assert.Nil(t, csp)
+	require.EqualError(t, err, "Could not find BCCSP, no 'BadName' provider")
+	require.Nil(t, csp)
 }

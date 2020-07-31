@@ -14,7 +14,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
 	"math/big"
 	"net"
 	"sync"
@@ -23,7 +22,7 @@ import (
 
 	proto "github.com/hyperledger/fabric-protos-go/gossip"
 	"github.com/hyperledger/fabric/gossip/util"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -47,8 +46,8 @@ func createTestServer(t *testing.T, cert *tls.Certificate) (srv *gossipTestServe
 		InsecureSkipVerify: true,
 	}
 	s := grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsConf)))
-	ll, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:0"))
-	assert.NoError(t, err, "%v", err)
+	ll, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err, "%v", err)
 
 	srv = &gossipTestServer{s: s, ll: ll, selfCertHash: certHashFromRawCert(cert.Certificate[0])}
 	proto.RegisterGossipServer(s, srv)
@@ -92,11 +91,11 @@ func TestCertificateExtraction(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	conn, err := grpc.DialContext(ctx, ll.Addr().String(), grpc.WithTransportCredentials(ta), grpc.WithBlock())
-	assert.NoError(t, err, "%v", err)
+	require.NoError(t, err, "%v", err)
 
 	cl := proto.NewGossipClient(conn)
 	stream, err := cl.GossipStream(context.Background())
-	assert.NoError(t, err, "%v", err)
+	require.NoError(t, err, "%v", err)
 	if err != nil {
 		return
 	}
@@ -105,14 +104,14 @@ func TestCertificateExtraction(t *testing.T) {
 	clientSideCertHash := extractCertificateHashFromContext(stream.Context())
 	serverSideCertHash := srv.getClientCertHash()
 
-	assert.NotNil(t, clientSideCertHash)
-	assert.NotNil(t, serverSideCertHash)
+	require.NotNil(t, clientSideCertHash)
+	require.NotNil(t, serverSideCertHash)
 
-	assert.Equal(t, 32, len(clientSideCertHash), "client side cert hash is %v", clientSideCertHash)
-	assert.Equal(t, 32, len(serverSideCertHash), "server side cert hash is %v", serverSideCertHash)
+	require.Equal(t, 32, len(clientSideCertHash), "client side cert hash is %v", clientSideCertHash)
+	require.Equal(t, 32, len(serverSideCertHash), "server side cert hash is %v", serverSideCertHash)
 
-	assert.Equal(t, clientSideCertHash, srv.selfCertHash, "Server self hash isn't equal to client side hash")
-	assert.Equal(t, clientCertHash, srv.remoteCertHash, "Server side and client hash aren't equal")
+	require.Equal(t, clientSideCertHash, srv.selfCertHash, "Server self hash isn't equal to client side hash")
+	require.Equal(t, clientCertHash, srv.remoteCertHash, "Server side and client hash aren't equal")
 }
 
 // GenerateCertificatesOrPanic generates a a random pair of public and private keys

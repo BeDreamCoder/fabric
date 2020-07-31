@@ -5,10 +5,10 @@ Fabric chaincode lifecycle to package a chaincode, install it on your peers,
 approve a chaincode definition for your organization, and then commit the
 definition to a channel. The chaincode is ready to be used after the definition
 has been successfully committed to the channel. For more information, visit
-[Chaincode for Operators](../chaincode4noah.html).
+[Fabric chaincode lifecycle](../chaincode_lifecycle.html).
 
 *Note: These instructions use the Fabric chaincode lifecycle introduced in the
-v2.0 Alpha release. If you would like to use the old lifecycle to install and
+v2.0 release. If you would like to use the old lifecycle to install and
 instantiate a chaincode, visit the [peer chaincode](peerchaincode.html) command
 reference.*
 
@@ -21,6 +21,7 @@ The `peer lifecycle chaincode` command has the following subcommands:
   * queryinstalled
   * getinstalledpackage
   * approveformyorg
+  * queryapproved
   * checkcommitreadiness
   * commit
   * querycommitted
@@ -36,7 +37,7 @@ Usage:
   peer lifecycle [command]
 
 Available Commands:
-  chaincode   Perform chaincode operations: package|install|queryinstalled|getinstalledpackage|approveformyorg|checkcommitreadiness|commit|querycommitted
+  chaincode   Perform chaincode operations: package|install|queryinstalled|getinstalledpackage|approveformyorg|queryapproved|checkcommitreadiness|commit|querycommitted
 
 Flags:
   -h, --help   help for lifecycle
@@ -47,7 +48,7 @@ Use "peer lifecycle [command] --help" for more information about a command.
 
 ## peer lifecycle chaincode
 ```
-Perform chaincode operations: package|install|queryinstalled|getinstalledpackage|approveformyorg|checkcommitreadiness|commit|querycommitted
+Perform chaincode operations: package|install|queryinstalled|getinstalledpackage|approveformyorg|queryapproved|checkcommitreadiness|commit|querycommitted
 
 Usage:
   peer lifecycle chaincode [command]
@@ -59,6 +60,7 @@ Available Commands:
   getinstalledpackage  Get an installed chaincode package from a peer.
   install              Install a chaincode.
   package              Package a chaincode
+  queryapproved        Query an org's approved chaincode definition from its peer.
   querycommitted       Query the committed chaincode definitions by channel on a peer.
   queryinstalled       Query the installed chaincodes on a peer.
 
@@ -116,6 +118,7 @@ Flags:
       --connectionProfile string       The fully qualified path to the connection profile that provides the necessary connection information for the network. Note: currently only supported for providing peer connection information
   -h, --help                           help for install
       --peerAddresses stringArray      The addresses of the peers to connect to
+      --targetPeer string              When using a connection profile, the name of the peer to target for this action
       --tlsRootCertFiles stringArray   If TLS is enabled, the paths to the TLS root cert files of the peers to connect to. The order and number of certs specified should match the --peerAddresses flag
 
 Global Flags:
@@ -142,6 +145,7 @@ Flags:
   -h, --help                           help for queryinstalled
   -O, --output string                  The output format for query results. Default is human-readable plain-text. json is currently the only supported format.
       --peerAddresses stringArray      The addresses of the peers to connect to
+      --targetPeer string              When using a connection profile, the name of the peer to target for this action
       --tlsRootCertFiles stringArray   If TLS is enabled, the paths to the TLS root cert files of the peers to connect to. The order and number of certs specified should match the --peerAddresses flag
 
 Global Flags:
@@ -169,6 +173,7 @@ Flags:
       --output-directory string        The output directory to use when writing a chaincode install package to disk. Default is the current working directory.
       --package-id string              The identifier of the chaincode install package
       --peerAddresses stringArray      The addresses of the peers to connect to
+      --targetPeer string              When using a connection profile, the name of the peer to target for this action
       --tlsRootCertFiles stringArray   If TLS is enabled, the paths to the TLS root cert files of the peers to connect to. The order and number of certs specified should match the --peerAddresses flag
 
 Global Flags:
@@ -201,13 +206,42 @@ Flags:
   -n, --name string                    Name of the chaincode
       --package-id string              The identifier of the chaincode install package
       --peerAddresses stringArray      The addresses of the peers to connect to
-      --sequence int                   The sequence number of the chaincode definition for the channel (default 1)
+      --sequence int                   The sequence number of the chaincode definition for the channel
       --signature-policy string        The endorsement policy associated to this chaincode specified as a signature policy
       --tlsRootCertFiles stringArray   If TLS is enabled, the paths to the TLS root cert files of the peers to connect to. The order and number of certs specified should match the --peerAddresses flag
   -V, --validation-plugin string       The name of the validation plugin to be used for this chaincode
   -v, --version string                 Version of the chaincode
       --waitForEvent                   Whether to wait for the event from each peer's deliver filtered service signifying that the transaction has been committed successfully (default true)
       --waitForEventTimeout duration   Time to wait for the event from each peer's deliver filtered service signifying that the 'invoke' transaction has been committed successfully (default 30s)
+
+Global Flags:
+      --cafile string                       Path to file containing PEM-encoded trusted certificate(s) for the ordering endpoint
+      --certfile string                     Path to file containing PEM-encoded X509 public key to use for mutual TLS communication with the orderer endpoint
+      --clientauth                          Use mutual TLS when communicating with the orderer endpoint
+      --connTimeout duration                Timeout for client to connect (default 3s)
+      --keyfile string                      Path to file containing PEM-encoded private key to use for mutual TLS communication with the orderer endpoint
+  -o, --orderer string                      Ordering service endpoint
+      --ordererTLSHostnameOverride string   The hostname override to use when validating the TLS connection to the orderer.
+      --tls                                 Use TLS when communicating with the orderer endpoint
+```
+
+
+## peer lifecycle chaincode queryapproved
+```
+Query an organization's approved chaincode definition from its peer.
+
+Usage:
+  peer lifecycle chaincode queryapproved [flags]
+
+Flags:
+  -C, --channelID string               The channel on which this command should be executed
+      --connectionProfile string       The fully qualified path to the connection profile that provides the necessary connection information for the network. Note: currently only supported for providing peer connection information
+  -h, --help                           help for queryapproved
+  -n, --name string                    Name of the chaincode
+  -O, --output string                  The output format for query results. Default is human-readable plain-text. json is currently the only supported format.
+      --peerAddresses stringArray      The addresses of the peers to connect to
+      --sequence int                   The sequence number of the chaincode definition for the channel
+      --tlsRootCertFiles stringArray   If TLS is enabled, the paths to the TLS root cert files of the peers to connect to. The order and number of certs specified should match the --peerAddresses flag
 
 Global Flags:
       --cafile string                       Path to file containing PEM-encoded trusted certificate(s) for the ordering endpoint
@@ -239,7 +273,7 @@ Flags:
   -n, --name string                    Name of the chaincode
   -O, --output string                  The output format for query results. Default is human-readable plain-text. json is currently the only supported format.
       --peerAddresses stringArray      The addresses of the peers to connect to
-      --sequence int                   The sequence number of the chaincode definition for the channel (default 1)
+      --sequence int                   The sequence number of the chaincode definition for the channel
       --signature-policy string        The endorsement policy associated to this chaincode specified as a signature policy
       --tlsRootCertFiles stringArray   If TLS is enabled, the paths to the TLS root cert files of the peers to connect to. The order and number of certs specified should match the --peerAddresses flag
   -V, --validation-plugin string       The name of the validation plugin to be used for this chaincode
@@ -274,7 +308,7 @@ Flags:
       --init-required                  Whether the chaincode requires invoking 'init'
   -n, --name string                    Name of the chaincode
       --peerAddresses stringArray      The addresses of the peers to connect to
-      --sequence int                   The sequence number of the chaincode definition for the channel (default 1)
+      --sequence int                   The sequence number of the chaincode definition for the channel
       --signature-policy string        The endorsement policy associated to this chaincode specified as a signature policy
       --tlsRootCertFiles stringArray   If TLS is enabled, the paths to the TLS root cert files of the peers to connect to. The order and number of certs specified should match the --peerAddresses flag
   -V, --validation-plugin string       The name of the validation plugin to be used for this chaincode
@@ -328,13 +362,15 @@ Global Flags:
 
 A chaincode needs to be packaged before it can be installed on your peers.
 This example uses the `peer lifecycle chaincode package` command to package
-a Golang chaincode.
+a Go chaincode.
 
-  * Use the `--label` flag to provide a chaincode package label of ``myccv1``
+  * Use the `--path` flag to indicate the location of the chaincode.
+    The path must be a fully qualified path or a path relative to your present working directory.
+  * Use the `--label` flag to provide a chaincode package label of `myccv1`
     that your organization will use to identify the package.
 
     ```
-    peer lifecycle chaincode package mycc.tar.gz --path github.com/hyperledger/fabric-samples/chaincode/abstore/go/ --lang golang --label myccv1
+    peer lifecycle chaincode package mycc.tar.gz --path $CHAINCODE_DIR --lang golang --label myccv1
     ```
 
 ### peer lifecycle chaincode install example
@@ -362,7 +398,7 @@ You need to use the chaincode package identifier to approve a chaincode
 definition for your organization. You can find the package ID for the
 chaincodes you have installed by using the
 `peer lifecycle chaincode queryinstalled` command:
-    
+
 ```
 peer lifecycle chaincode queryinstalled --peerAddresses peer0.org1.example.com:7051
 ```
@@ -374,6 +410,36 @@ package label.
 Get installed chaincodes on peer:
 Package ID: myccv1:a7ca45a7cc85f1d89c905b775920361ed089a364e12a9b6d55ba75c965ddd6a9, Label: myccv1
 ```
+
+  * You can also use the `--output` flag to have the CLI format the output as
+    JSON.
+
+    ```
+    peer lifecycle chaincode queryinstalled --peerAddresses peer0.org1.example.com:7051 --output json
+    ```
+
+    If successful, the command will return the chaincodes you have installed as JSON.
+
+    ```
+    {
+      "installed_chaincodes": [
+        {
+          "package_id": "mycc_1:aab9981fa5649cfe25369fce7bb5086a69672a631e4f95c4af1b5198fe9f845b",
+          "label": "mycc_1",
+          "references": {
+            "mychannel": {
+              "chaincodes": [
+                {
+                  "name": "mycc",
+                  "version": "1"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+    ```
 
 ### peer lifecycle chaincode getinstalledpackage example
 
@@ -404,46 +470,130 @@ channel `mychannel`.
 
   * Use the `--package-id` flag to pass in the chaincode package identifier. Use
     the `--signature-policy` flag to define an endorsement policy for the chaincode.
-    Use the ``init-required`` flag to request the execution of the ``Init``
+    Use the `init-required` flag to request the execution of the `Init`
     function to initialize the chaincode.
 
     ```
     export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
-    .
+
     peer lifecycle chaincode approveformyorg  -o orderer.example.com:7050 --tls --cafile $ORDERER_CA --channelID mychannel --name mycc --version 1.0 --init-required --package-id myccv1:a7ca45a7cc85f1d89c905b775920361ed089a364e12a9b6d55ba75c965ddd6a9 --sequence 1 --signature-policy "AND ('Org1MSP.peer','Org2MSP.peer')"
-    .
+
     2019-03-18 16:04:09.046 UTC [cli.lifecycle.chaincode] InitCmdFactory -> INFO 001 Retrieved channel (mychannel) orderer endpoint: orderer.example.com:7050
     2019-03-18 16:04:11.253 UTC [chaincodeCmd] ClientWait -> INFO 002 txid [efba188ca77889cc1c328fc98e0bb12d3ad0abcda3f84da3714471c7c1e6c13c] committed with status (VALID) at peer0.org1.example.com:7051
     ```
 
-  * You can also use the ``--channel-config-policy`` flag use a policy inside
+  * You can also use the `--channel-config-policy` flag use a policy inside
     the channel configuration as the chaincode endorsement policy. The default
-    endorsement policy is ``Channel/Application/Endorsement``
+    endorsement policy is `Channel/Application/Endorsement`
 
     ```
     export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
-    .
+
     peer lifecycle chaincode approveformyorg -o orderer.example.com:7050 --tls --cafile $ORDERER_CA --channelID mychannel --name mycc --version 1.0 --init-required --package-id myccv1:a7ca45a7cc85f1d89c905b775920361ed089a364e12a9b6d55ba75c965ddd6a9 --sequence 1 --channel-config-policy Channel/Application/Admins
-    .
+
     2019-03-18 16:04:09.046 UTC [cli.lifecycle.chaincode] InitCmdFactory -> INFO 001 Retrieved channel (mychannel) orderer endpoint: orderer.example.com:7050
     2019-03-18 16:04:11.253 UTC [chaincodeCmd] ClientWait -> INFO 002 txid [efba188ca77889cc1c328fc98e0bb12d3ad0abcda3f84da3714471c7c1e6c13c] committed with status (VALID) at peer0.org1.example.com:7051
     ```
+
+### peer lifecycle chaincode queryapproved example
+
+You can query an organization's approved chaincode definition by using the `peer lifecycle chaincode queryapproved` command.
+You can use this command to see the details (including package ID) of approved chaincode definitions.
+
+  * Here is an example of the `peer lifecycle chaincode queryapproved` command,
+    which queries the approved definition of a chaincode named `mycc` at sequence number `1` on
+    channel `mychannel`.
+
+    ```
+    peer lifecycle chaincode queryapproved -C mychannel -n mycc --sequence 1
+
+    Approved chaincode definition for chaincode 'mycc' on channel 'mychannel':
+    sequence: 1, version: 1, init-required: true, package-id: mycc_1:d02f72000e7c0f715840f51cb8d72d70bc1ba230552f8445dded0ec8b6e0b830, endorsement plugin: escc, validation plugin: vscc
+    ```
+
+    If NO package is specified for the approved definition, this command will display an empty package ID.
+
+  * You can also use this command without specifying the sequence number in order to query the latest approved definition (latest: the newer of the currently defined sequence number and the next sequence number).
+
+    ```
+    peer lifecycle chaincode queryapproved -C mychannel -n mycc
+
+    Approved chaincode definition for chaincode 'mycc' on channel 'mychannel':
+    sequence: 3, version: 3, init-required: false, package-id: mycc_1:d02f72000e7c0f715840f51cb8d72d70bc1ba230552f8445dded0ec8b6e0b830, endorsement plugin: escc, validation plugin: vscc
+    ```
+
+  * You can also use the `--output` flag to have the CLI format the output as
+    JSON.
+
+    - When querying an approved chaincode definition for which package is specified
+
+      ```
+      peer lifecycle chaincode queryapproved -C mychannel -n mycc --sequence 1 --output json
+      ```
+
+      If successful, the command will return a JSON that has the approved chaincode definition for chaincode `mycc` at sequence number `1` on channel `mychannel`.
+
+      ```
+      {
+        "sequence": 1,
+        "version": "1",
+        "endorsement_plugin": "escc",
+        "validation_plugin": "vscc",
+        "validation_parameter": "EiAvQ2hhbm5lbC9BcHBsaWNhdGlvbi9FbmRvcnNlbWVudA==",
+        "collections": {},
+        "init_required": true,
+        "source": {
+          "Type": {
+            "LocalPackage": {
+              "package_id": "mycc_1:d02f72000e7c0f715840f51cb8d72d70bc1ba230552f8445dded0ec8b6e0b830"
+            }
+          }
+        }
+      }
+      ```
+
+    - When querying an approved chaincode definition for which package is NOT specified
+
+      ```
+      peer lifecycle chaincode queryapproved -C mychannel -n mycc --sequence 2 --output json
+      ```
+
+      If successful, the command will return a JSON that has the approved chaincode definition for chaincode `mycc` at sequence number `2` on channel `mychannel`.
+
+      ```
+      {
+        "sequence": 2,
+        "version": "2",
+        "endorsement_plugin": "escc",
+        "validation_plugin": "vscc",
+        "validation_parameter": "EiAvQ2hhbm5lbC9BcHBsaWNhdGlvbi9FbmRvcnNlbWVudA==",
+        "collections": {},
+        "source": {
+          "Type": {
+            "Unavailable": {}
+          }
+        }
+      }
+      ```
 
 ### peer lifecycle chaincode checkcommitreadiness example
 
 You can check whether a chaincode definition is ready to be committed using the
-``peer lifecycle chaincode checkcommitreadiness command, which will return
-successfully if a subsequent commit of the definition is expected to succeed. It 
+`peer lifecycle chaincode checkcommitreadiness` command, which will return
+successfully if a subsequent commit of the definition is expected to succeed. It
 also outputs which organizations have approved the chaincode definition. If an
 organization has approved the chaincode definition specified in the command, the
 command will return a value of true. You can use this command to learn whether enough
 channel members have approved a chaincode definition to meet the
-``Application/Channel/Endorsement`` policy (a majority by default) before the
+`Application/Channel/Endorsement` policy (a majority by default) before the
 definition can be committed to a channel.
 
-     * ```
+  * Here is an example of the `peer lifecycle chaincode checkcommitreadiness` command,
+    which checks a chaincode named `mycc` at version `1.0` on channel `mychannel`.
+
+    ```
     export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
-    .
+
     peer lifecycle chaincode checkcommitreadiness -o orderer.example.com:7050 --channelID mychannel --tls --cafile $ORDERER_CA --name mycc --version 1.0 --init-required --sequence 1
     ```
 
@@ -457,12 +607,12 @@ definition can be committed to a channel.
     Org2MSP: true
     ```
 
-    * You can also use the `--output` flag to have the CLI format the output as
+  * You can also use the `--output` flag to have the CLI format the output as
     JSON.
 
     ```
     export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
-    .
+
     peer lifecycle chaincode checkcommitreadiness -o orderer.example.com:7050 --channelID mychannel --tls --cafile $ORDERER_CA --name mycc --version 1.0 --init-required --sequence 1 --output json
     ```
 
@@ -482,16 +632,16 @@ definition can be committed to a channel.
 
 Once a sufficient number of organizations approve a chaincode definition for
 their organizations (a majority by default), one organization can commit the
-definition the channel using the ``peer lifecycle chaincode commit`` command:
+definition the channel using the `peer lifecycle chaincode commit` command:
 
   * This command needs to target the peers of other organizations on the channel
     to collect their organization endorsement for the definition.
 
     ```
     export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
-    .
+
     peer lifecycle chaincode commit -o orderer.example.com:7050 --channelID mychannel --name mycc --version 1.0 --sequence 1 --init-required --tls --cafile $ORDERER_CA --peerAddresses peer0.org1.example.com:7051 --peerAddresses peer0.org2.example.com:9051
-    .
+
     2019-03-18 16:14:27.258 UTC [chaincodeCmd] ClientWait -> INFO 001 txid [b6f657a14689b27d69a50f39590b3949906b5a426f9d7f0dcee557f775e17882] committed with status (VALID) at peer0.org2.example.com:9051
     2019-03-18 16:14:27.321 UTC [chaincodeCmd] ClientWait -> INFO 002 txid [b6f657a14689b27d69a50f39590b3949906b5a426f9d7f0dcee557f775e17882] committed with status (VALID) at peer0.org1.example.com:7051
     ```
@@ -499,18 +649,18 @@ definition the channel using the ``peer lifecycle chaincode commit`` command:
 ### peer lifecycle chaincode querycommitted example
 
 You can query the chaincode definitions that have been committed to a channel by
-using the ``peer lifecycle chaincode querycommitted`` command. You can use this
+using the `peer lifecycle chaincode querycommitted` command. You can use this
 command to query the current definition sequence number before upgrading a
 chaincode.
 
-  * You need to supply the chaincode name and channel name in order to query a 
+  * You need to supply the chaincode name and channel name in order to query a
     specific chaincode definition and the organizations that have approved it.
 
     ```
     export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
-    .
+
     peer lifecycle chaincode querycommitted -o orderer.example.com:7050 --channelID mychannel --name mycc --tls --cafile $ORDERER_CA --peerAddresses peer0.org1.example.com:7051
-    .
+
     Committed chaincode definition for chaincode 'mycc' on channel 'mychannel':
     Version: 1, Sequence: 1, Endorsement Plugin: escc, Validation Plugin: vscc
     Approvals: [Org1MSP: true, Org2MSP: true]
@@ -521,12 +671,86 @@ chaincode.
 
     ```
     export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
-    .
+
     peer lifecycle chaincode querycommitted -o orderer.example.com:7050 --channelID mychannel --tls --cafile $ORDERER_CA --peerAddresses peer0.org1.example.com:7051
-    .
+
     Committed chaincode definitions on channel 'mychannel':
     Name: mycc, Version: 1, Sequence: 1, Endorsement Plugin: escc, Validation Plugin: vscc
     Name: yourcc, Version: 2, Sequence: 3, Endorsement Plugin: escc, Validation Plugin: vscc
     ```
+
+  * You can also use the `--output` flag to have the CLI format the output as
+    JSON.
+
+    - For querying a specific chaincode definition
+
+      ```
+      export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+
+      peer lifecycle chaincode querycommitted -o orderer.example.com:7050 --channelID mychannel --name mycc --tls --cafile $ORDERER_CA --peerAddresses peer0.org1.example.com:7051 --output json
+      ```
+
+      If successful, the command will return a JSON that has committed chaincode definition for chaincode 'mycc' on channel 'mychannel'.
+
+      ```
+      {
+        "sequence": 1,
+        "version": "1",
+        "endorsement_plugin": "escc",
+        "validation_plugin": "vscc",
+        "validation_parameter": "EiAvQ2hhbm5lbC9BcHBsaWNhdGlvbi9FbmRvcnNlbWVudA==",
+        "collections": {},
+        "init_required": true,
+        "approvals": {
+          "Org1MSP": true,
+          "Org2MSP": true
+        }
+      }
+      ```
+
+      The `validation_parameter` is base64 encoded. An example of the command to decode it is as follows.
+
+      ```
+      echo EiAvQ2hhbm5lbC9BcHBsaWNhdGlvbi9FbmRvcnNlbWVudA== | base64 -d
+
+       /Channel/Application/Endorsement
+      ```
+
+    - For querying all chaincode definitions on that channel
+
+      ```
+      export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+
+      peer lifecycle chaincode querycommitted -o orderer.example.com:7050 --channelID mychannel --tls --cafile $ORDERER_CA --peerAddresses peer0.org1.example.com:7051 --output json
+      ```
+
+      If successful, the command will return a JSON that has committed chaincode definitions on channel 'mychannel'.
+
+      ```
+      {
+        "chaincode_definitions": [
+          {
+            "name": "mycc",
+            "sequence": 1,
+            "version": "1",
+            "endorsement_plugin": "escc",
+            "validation_plugin": "vscc",
+            "validation_parameter": "EiAvQ2hhbm5lbC9BcHBsaWNhdGlvbi9FbmRvcnNlbWVudA==",
+            "collections": {},
+            "init_required": true
+          },
+          {
+            "name": "yourcc",
+            "sequence": 3,
+            "version": "2",
+            "endorsement_plugin": "escc",
+            "validation_plugin": "vscc",
+            "validation_parameter": "EiAvQ2hhbm5lbC9BcHBsaWNhdGlvbi9FbmRvcnNlbWVudA==",
+            "collections": {}
+          }
+        ]
+      }
+      ```
+
 
 <a rel="license" href="http://creativecommons.org/licenses/by/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by/4.0/88x31.png" /></a><br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License</a>.

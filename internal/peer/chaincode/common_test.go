@@ -22,7 +22,7 @@ import (
 	pb "github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/bccsp/factory"
 	"github.com/hyperledger/fabric/bccsp/sw"
-	"github.com/hyperledger/fabric/common/cauthdsl"
+	"github.com/hyperledger/fabric/common/policydsl"
 	"github.com/hyperledger/fabric/core/config/configtest"
 	"github.com/hyperledger/fabric/internal/configtxgen/encoder"
 	"github.com/hyperledger/fabric/internal/configtxgen/genesisconfig"
@@ -33,7 +33,6 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -156,7 +155,7 @@ func TestCheckInvalidJSON(t *testing.T) {
 
 func TestGetOrdererEndpointFromConfigTx(t *testing.T) {
 	signer, err := common.GetDefaultSigner()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	mockchain := "mockchain"
 	factory.InitFactories(nil)
@@ -171,17 +170,16 @@ func TestGetOrdererEndpointFromConfigTx(t *testing.T) {
 	mockEndorserClient := common.GetMockEndorserClient(mockResponse, nil)
 
 	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	ordererEndpoints, err := common.GetOrdererEndpointOfChain(mockchain, signer, mockEndorserClient, cryptoProvider)
-	assert.NoError(t, err, "GetOrdererEndpointOfChain from genesis block")
+	require.NoError(t, err, "GetOrdererEndpointOfChain from genesis block")
 
-	assert.Equal(t, len(ordererEndpoints), 1)
-	assert.Equal(t, ordererEndpoints[0], "127.0.0.1:7050")
+	require.Equal(t, len(ordererEndpoints), 0)
 }
 
 func TestGetOrdererEndpointFail(t *testing.T) {
 	signer, err := common.GetDefaultSigner()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	mockchain := "mockchain"
 	factory.InitFactories(nil)
@@ -193,9 +191,9 @@ func TestGetOrdererEndpointFail(t *testing.T) {
 	mockEndorserClient := common.GetMockEndorserClient(mockResponse, nil)
 
 	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	_, err = common.GetOrdererEndpointOfChain(mockchain, signer, mockEndorserClient, cryptoProvider)
-	assert.Error(t, err, "GetOrdererEndpointOfChain from invalid response")
+	require.Error(t, err, "GetOrdererEndpointOfChain from invalid response")
 }
 
 const sampleCollectionConfigGood = `[
@@ -204,6 +202,16 @@ const sampleCollectionConfigGood = `[
 		"policy": "OR('A.member', 'B.member')",
 		"requiredPeerCount": 3,
 		"maxPeerCount": 483279847,
+		"blockToLive":10,
+		"memberOnlyRead": true,
+		"memberOnlyWrite": true
+	}
+]`
+
+const sampleCollectionConfigGoodNoMaxPeerCountOrRequiredPeerCount = `[
+	{
+		"name": "foo",
+		"policy": "OR('A.member', 'B.member')",
 		"blockToLive":10,
 		"memberOnlyRead": true,
 		"memberOnlyWrite": true
@@ -282,48 +290,64 @@ const sampleCollectionConfigBadSignaturePolicyAndChannelConfigPolicy = `[
 
 func TestCollectionParsing(t *testing.T) {
 	ccp, ccpBytes, err := getCollectionConfigFromBytes([]byte(sampleCollectionConfigGood))
-	assert.NoError(t, err)
-	assert.NotNil(t, ccp)
-	assert.NotNil(t, ccpBytes)
+	require.NoError(t, err)
+	require.NotNil(t, ccp)
+	require.NotNil(t, ccpBytes)
 	conf := ccp.Config[0].GetStaticCollectionConfig()
-	pol, _ := cauthdsl.FromString("OR('A.member', 'B.member')")
-	assert.Equal(t, 3, int(conf.RequiredPeerCount))
-	assert.Equal(t, 483279847, int(conf.MaximumPeerCount))
-	assert.Equal(t, "foo", conf.Name)
-	assert.True(t, proto.Equal(pol, conf.MemberOrgsPolicy.GetSignaturePolicy()))
-	assert.Equal(t, 10, int(conf.BlockToLive))
-	assert.Equal(t, true, conf.MemberOnlyRead)
-	assert.Nil(t, conf.EndorsementPolicy)
+	pol, _ := policydsl.FromString("OR('A.member', 'B.member')")
+	require.Equal(t, 3, int(conf.RequiredPeerCount))
+	require.Equal(t, 483279847, int(conf.MaximumPeerCount))
+	require.Equal(t, "foo", conf.Name)
+	require.True(t, proto.Equal(pol, conf.MemberOrgsPolicy.GetSignaturePolicy()))
+	require.Equal(t, 10, int(conf.BlockToLive))
+	require.Equal(t, true, conf.MemberOnlyRead)
+	require.Nil(t, conf.EndorsementPolicy)
+	t.Logf("conf=%s", conf)
+
+	// Test default values for RequiredPeerCount and MaxPeerCount
+	ccp, ccpBytes, err = getCollectionConfigFromBytes([]byte(sampleCollectionConfigGoodNoMaxPeerCountOrRequiredPeerCount))
+	require.NoError(t, err)
+	require.NotNil(t, ccp)
+	require.NotNil(t, ccpBytes)
+	conf = ccp.Config[0].GetStaticCollectionConfig()
+	pol, _ = policydsl.FromString("OR('A.member', 'B.member')")
+	require.Equal(t, 0, int(conf.RequiredPeerCount))
+	require.Equal(t, 1, int(conf.MaximumPeerCount))
+	require.Equal(t, "foo", conf.Name)
+	require.True(t, proto.Equal(pol, conf.MemberOrgsPolicy.GetSignaturePolicy()))
+	require.Equal(t, 10, int(conf.BlockToLive))
+	require.Equal(t, true, conf.MemberOnlyRead)
+	require.Nil(t, conf.EndorsementPolicy)
 	t.Logf("conf=%s", conf)
 
 	ccp, ccpBytes, err = getCollectionConfigFromBytes([]byte(sampleCollectionConfigGoodWithSignaturePolicy))
-	assert.NoError(t, err)
-	assert.NotNil(t, ccp)
-	assert.NotNil(t, ccpBytes)
+	require.NoError(t, err)
+	require.NotNil(t, ccp)
+	require.NotNil(t, ccpBytes)
 	conf = ccp.Config[0].GetStaticCollectionConfig()
-	pol, _ = cauthdsl.FromString("OR('A.member', 'B.member')")
-	assert.Equal(t, 3, int(conf.RequiredPeerCount))
-	assert.Equal(t, 483279847, int(conf.MaximumPeerCount))
-	assert.Equal(t, "foo", conf.Name)
-	assert.True(t, proto.Equal(pol, conf.MemberOrgsPolicy.GetSignaturePolicy()))
-	assert.Equal(t, 10, int(conf.BlockToLive))
-	assert.Equal(t, true, conf.MemberOnlyRead)
-	assert.True(t, proto.Equal(pol, conf.EndorsementPolicy.GetSignaturePolicy()))
+	pol, _ = policydsl.FromString("OR('A.member', 'B.member')")
+	require.Equal(t, 3, int(conf.RequiredPeerCount))
+	require.Equal(t, 483279847, int(conf.MaximumPeerCount))
+	require.Equal(t, "foo", conf.Name)
+	require.True(t, proto.Equal(pol, conf.MemberOrgsPolicy.GetSignaturePolicy()))
+	require.Equal(t, 10, int(conf.BlockToLive))
+	require.Equal(t, true, conf.MemberOnlyRead)
+	require.True(t, proto.Equal(pol, conf.EndorsementPolicy.GetSignaturePolicy()))
 	t.Logf("conf=%s", conf)
 
 	ccp, ccpBytes, err = getCollectionConfigFromBytes([]byte(sampleCollectionConfigGoodWithChannelConfigPolicy))
-	assert.NoError(t, err)
-	assert.NotNil(t, ccp)
-	assert.NotNil(t, ccpBytes)
+	require.NoError(t, err)
+	require.NotNil(t, ccp)
+	require.NotNil(t, ccpBytes)
 	conf = ccp.Config[0].GetStaticCollectionConfig()
-	pol, _ = cauthdsl.FromString("OR('A.member', 'B.member')")
-	assert.Equal(t, 3, int(conf.RequiredPeerCount))
-	assert.Equal(t, 483279847, int(conf.MaximumPeerCount))
-	assert.Equal(t, "foo", conf.Name)
-	assert.True(t, proto.Equal(pol, conf.MemberOrgsPolicy.GetSignaturePolicy()))
-	assert.Equal(t, 10, int(conf.BlockToLive))
-	assert.Equal(t, true, conf.MemberOnlyRead)
-	assert.Equal(t, "/Channel/Application/Endorsement", conf.EndorsementPolicy.GetChannelConfigPolicyReference())
+	pol, _ = policydsl.FromString("OR('A.member', 'B.member')")
+	require.Equal(t, 3, int(conf.RequiredPeerCount))
+	require.Equal(t, 483279847, int(conf.MaximumPeerCount))
+	require.Equal(t, "foo", conf.Name)
+	require.True(t, proto.Equal(pol, conf.MemberOrgsPolicy.GetSignaturePolicy()))
+	require.Equal(t, 10, int(conf.BlockToLive))
+	require.Equal(t, true, conf.MemberOnlyRead)
+	require.Equal(t, "/Channel/Application/Endorsement", conf.EndorsementPolicy.GetChannelConfigPolicyReference())
 	t.Logf("conf=%s", conf)
 
 	failureTests := []struct {
@@ -356,9 +380,9 @@ func TestCollectionParsing(t *testing.T) {
 	for _, test := range failureTests {
 		t.Run(test.name, func(t *testing.T) {
 			ccp, ccpBytes, err = getCollectionConfigFromBytes([]byte(test.collectionConfig))
-			assert.EqualError(t, err, test.expectedErr)
-			assert.Nil(t, ccp)
-			assert.Nil(t, ccpBytes)
+			require.EqualError(t, err, test.expectedErr)
+			require.Nil(t, ccp)
+			require.Nil(t, ccpBytes)
 		})
 	}
 }
@@ -366,7 +390,7 @@ func TestCollectionParsing(t *testing.T) {
 func TestValidatePeerConnectionParams(t *testing.T) {
 	defer resetFlags()
 	defer viper.Reset()
-	assert := assert.New(t)
+	require := require.New(t)
 	cleanup := configtest.SetDevFabricConfigPath(t)
 	defer cleanup()
 
@@ -378,16 +402,16 @@ func TestValidatePeerConnectionParams(t *testing.T) {
 	peerAddresses = []string{"peer0", "peer1"}
 	tlsRootCertFiles = []string{"cert0", "cert1"}
 	err := validatePeerConnectionParameters("query")
-	assert.Error(err)
-	assert.Contains(err.Error(), "command can only be executed against one peer")
+	require.Error(err)
+	require.Contains(err.Error(), "command can only be executed against one peer")
 
 	// success - peer provided and no TLS root certs
 	// TLS disabled
 	resetFlags()
 	peerAddresses = []string{"peer0"}
 	err = validatePeerConnectionParameters("query")
-	assert.NoError(err)
-	assert.Nil(tlsRootCertFiles)
+	require.NoError(err)
+	require.Nil(tlsRootCertFiles)
 
 	// success - more TLS root certs than peers
 	// TLS disabled
@@ -395,16 +419,16 @@ func TestValidatePeerConnectionParams(t *testing.T) {
 	peerAddresses = []string{"peer0"}
 	tlsRootCertFiles = []string{"cert0", "cert1"}
 	err = validatePeerConnectionParameters("invoke")
-	assert.NoError(err)
-	assert.Nil(tlsRootCertFiles)
+	require.NoError(err)
+	require.Nil(tlsRootCertFiles)
 
 	// success - multiple peers and no TLS root certs - invoke
 	// TLS disabled
 	resetFlags()
 	peerAddresses = []string{"peer0", "peer1"}
 	err = validatePeerConnectionParameters("invoke")
-	assert.NoError(err)
-	assert.Nil(tlsRootCertFiles)
+	require.NoError(err)
+	require.Nil(tlsRootCertFiles)
 
 	// TLS enabled
 	viper.Set("peer.tls.enabled", true)
@@ -415,8 +439,8 @@ func TestValidatePeerConnectionParams(t *testing.T) {
 	peerAddresses = []string{"peer0", "peer1"}
 	tlsRootCertFiles = []string{"cert0"}
 	err = validatePeerConnectionParameters("invoke")
-	assert.Error(err)
-	assert.Contains(err.Error(), fmt.Sprintf("number of peer addresses (%d) does not match the number of TLS root cert files (%d)", len(peerAddresses), len(tlsRootCertFiles)))
+	require.Error(err)
+	require.Contains(err.Error(), fmt.Sprintf("number of peer addresses (%d) does not match the number of TLS root cert files (%d)", len(peerAddresses), len(tlsRootCertFiles)))
 
 	// success - more than one peer and TLS root certs - invoke
 	// TLS enabled
@@ -424,14 +448,14 @@ func TestValidatePeerConnectionParams(t *testing.T) {
 	peerAddresses = []string{"peer0", "peer1"}
 	tlsRootCertFiles = []string{"cert0", "cert1"}
 	err = validatePeerConnectionParameters("invoke")
-	assert.NoError(err)
+	require.NoError(err)
 
 	// failure - connection profile doesn't exist
 	resetFlags()
 	connectionProfile = "blah"
 	err = validatePeerConnectionParameters("invoke")
-	assert.Error(err)
-	assert.Contains(err.Error(), "error reading connection profile")
+	require.Error(err)
+	require.Contains(err.Error(), "error reading connection profile")
 
 	// failure - connection profile has peer defined in channel config but
 	// not in peer config
@@ -439,49 +463,49 @@ func TestValidatePeerConnectionParams(t *testing.T) {
 	channelID = "mychannel"
 	connectionProfile = "testdata/connectionprofile-uneven.yaml"
 	err = validatePeerConnectionParameters("invoke")
-	assert.Error(err)
-	assert.Contains(err.Error(), "defined in the channel config but doesn't have associated peer config")
+	require.Error(err)
+	require.Contains(err.Error(), "defined in the channel config but doesn't have associated peer config")
 
 	// success - connection profile exists
 	resetFlags()
 	channelID = "mychannel"
 	connectionProfile = "testdata/connectionprofile.yaml"
 	err = validatePeerConnectionParameters("invoke")
-	assert.NoError(err)
+	require.NoError(err)
 }
 
 func TestInitCmdFactoryFailures(t *testing.T) {
 	defer resetFlags()
-	assert := assert.New(t)
+	require := require.New(t)
 
 	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
-	assert.Nil(err)
+	require.Nil(err)
 
 	// failure validating peer connection parameters
 	resetFlags()
 	peerAddresses = []string{"peer0", "peer1"}
 	tlsRootCertFiles = []string{"cert0", "cert1"}
 	cf, err := InitCmdFactory("query", true, false, cryptoProvider)
-	assert.Error(err)
-	assert.Contains(err.Error(), "error validating peer connection parameters: 'query' command can only be executed against one peer")
-	assert.Nil(cf)
+	require.Error(err)
+	require.Contains(err.Error(), "error validating peer connection parameters: 'query' command can only be executed against one peer")
+	require.Nil(cf)
 
 	// failure - no peers supplied and endorser client is needed
 	resetFlags()
 	peerAddresses = []string{}
 	cf, err = InitCmdFactory("query", true, false, cryptoProvider)
-	assert.Error(err)
-	assert.Contains(err.Error(), "no endorser clients retrieved")
-	assert.Nil(cf)
+	require.Error(err)
+	require.Contains(err.Error(), "no endorser clients retrieved")
+	require.Nil(cf)
 
 	// failure - orderer client is needed, ordering endpoint is empty and no
 	// endorser client supplied
 	resetFlags()
 	peerAddresses = nil
 	cf, err = InitCmdFactory("invoke", false, true, cryptoProvider)
-	assert.Error(err)
-	assert.Contains(err.Error(), "no ordering endpoint or endorser client supplied")
-	assert.Nil(cf)
+	require.Error(err)
+	require.Contains(err.Error(), "no ordering endpoint or endorser client supplied")
+	require.Nil(cf)
 }
 
 func TestDeliverGroupConnect(t *testing.T) {
@@ -690,7 +714,7 @@ func TestChaincodeInvokeOrQuery_waitForEvent(t *testing.T) {
 
 	waitForEvent = true
 	mockCF, err := getMockChaincodeCmdFactory()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	peerAddresses = []string{"peer0", "peer1"}
 	channelID := "testchannel"
 	txID := "txid0"
@@ -707,7 +731,7 @@ func TestChaincodeInvokeOrQuery_waitForEvent(t *testing.T) {
 			mockCF.DeliverClients,
 			mockCF.BroadcastClient,
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 
 	t.Run("success - one deliver client first receives block without txid and then one with txid", func(t *testing.T) {
@@ -730,7 +754,7 @@ func TestChaincodeInvokeOrQuery_waitForEvent(t *testing.T) {
 			mockDeliverClients,
 			mockCF.BroadcastClient,
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 
 	t.Run("failure - one of the deliver clients returns error", func(t *testing.T) {
@@ -749,8 +773,8 @@ func TestChaincodeInvokeOrQuery_waitForEvent(t *testing.T) {
 			mockDeliverClients,
 			mockCF.BroadcastClient,
 		)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "moist")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "moist")
 	})
 
 	t.Run("failure - transaction committed with non-success validation code", func(t *testing.T) {
@@ -769,8 +793,8 @@ func TestChaincodeInvokeOrQuery_waitForEvent(t *testing.T) {
 			mockDeliverClients,
 			mockCF.BroadcastClient,
 		)
-		assert.Error(t, err)
-		assert.Equal(t, err.Error(), "transaction invalidated with status (ENDORSEMENT_POLICY_FAILURE)")
+		require.Error(t, err)
+		require.Equal(t, err.Error(), "transaction invalidated with status (ENDORSEMENT_POLICY_FAILURE)")
 	})
 
 	t.Run("failure - deliver returns response status instead of block", func(t *testing.T) {
@@ -795,8 +819,8 @@ func TestChaincodeInvokeOrQuery_waitForEvent(t *testing.T) {
 			mockDeliverClients,
 			mockCF.BroadcastClient,
 		)
-		assert.Error(t, err)
-		assert.Equal(t, err.Error(), "deliver completed with status (FORBIDDEN) before txid received")
+		require.Error(t, err)
+		require.Equal(t, err.Error(), "deliver completed with status (FORBIDDEN) before txid received")
 	})
 
 	t.Run(" failure - timeout occurs - both deliver clients don't return an event with the expected txid before timeout", func(t *testing.T) {
@@ -816,8 +840,8 @@ func TestChaincodeInvokeOrQuery_waitForEvent(t *testing.T) {
 			mockDeliverClients,
 			mockCF.BroadcastClient,
 		)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "timed out")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "timed out")
 		close(delayChan)
 	})
 }
@@ -836,30 +860,30 @@ func TestProcessProposals(t *testing.T) {
 	signedProposal := &pb.SignedProposal{}
 	t.Run("should process a proposal for a single peer", func(t *testing.T) {
 		responses, err := processProposals([]pb.EndorserClient{mockClients[0]}, signedProposal)
-		assert.NoError(t, err)
-		assert.Len(t, responses, 1)
-		assert.Equal(t, responses[0].Response.Status, int32(200))
+		require.NoError(t, err)
+		require.Len(t, responses, 1)
+		require.Equal(t, responses[0].Response.Status, int32(200))
 	})
 	t.Run("should process a proposal for multiple peers", func(t *testing.T) {
 		responses, err := processProposals(mockClients, signedProposal)
-		assert.NoError(t, err)
-		assert.Len(t, responses, 4)
+		require.NoError(t, err)
+		require.Len(t, responses, 4)
 		// Sort the statuses (as they may turn up in different order) before comparing.
 		statuses := []int32{}
 		for _, response := range responses {
 			statuses = append(statuses, response.Response.Status)
 		}
 		sort.Slice(statuses, func(i, j int) bool { return statuses[i] < statuses[j] })
-		assert.EqualValues(t, []int32{200, 300, 400, 500}, statuses)
+		require.EqualValues(t, []int32{200, 300, 400, 500}, statuses)
 	})
 	t.Run("should return an error from processing a proposal for a single peer", func(t *testing.T) {
 		responses, err := processProposals([]pb.EndorserClient{mockErrorClient}, signedProposal)
-		assert.EqualError(t, err, "failed to call endorser")
-		assert.Nil(t, responses)
+		require.EqualError(t, err, "failed to call endorser")
+		require.Nil(t, responses)
 	})
 	t.Run("should return an error from processing a proposal for a single peer within multiple peers", func(t *testing.T) {
 		responses, err := processProposals([]pb.EndorserClient{mockClients[0], mockErrorClient, mockClients[1]}, signedProposal)
-		assert.EqualError(t, err, "failed to call endorser")
-		assert.Nil(t, responses)
+		require.EqualError(t, err, "failed to call endorser")
+		require.Nil(t, responses)
 	})
 }

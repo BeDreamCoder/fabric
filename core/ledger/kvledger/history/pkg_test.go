@@ -1,35 +1,42 @@
 /*
 Copyright IBM Corp. All Rights Reserved.
+
 SPDX-License-Identifier: Apache-2.0
 */
 
 package history
 
 import (
+	"crypto/sha256"
 	"io/ioutil"
 	"os"
 	"testing"
 
-	"github.com/hyperledger/fabric/bccsp/sw"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric/common/ledger/blkstorage/fsblkstorage"
 	"github.com/hyperledger/fabric/common/metrics/disabled"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/bookkeeping"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/privacyenabledstate"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/txmgr"
-	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/txmgr/lockbasedtxmgr"
 	"github.com/hyperledger/fabric/core/ledger/mock"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-/////// levelDBLockBasedHistoryEnv //////
+var (
+	testHashFunc = func(data []byte) ([]byte, error) {
+		h := sha256.New()
+		if _, err := h.Write(data); err != nil {
+			return nil, err
+		}
+		return h.Sum(nil), nil
+	}
+)
 
 type levelDBLockBasedHistoryEnv struct {
 	t                     testing.TB
 	testBlockStorageEnv   *testBlockStoreEnv
 	testDBEnv             privacyenabledstate.TestEnv
 	testBookkeepingEnv    *bookkeeping.TestEnv
-	txmgr                 txmgr.TxMgr
+	txmgr                 *txmgr.LockBasedTxMgr
 	testHistoryDBProvider *DBProvider
 	testHistoryDB         *DB
 	testHistoryDBPath     string
@@ -40,7 +47,7 @@ func newTestHistoryEnv(t *testing.T) *levelDBLockBasedHistoryEnv {
 
 	blockStorageTestEnv := newBlockStorageTestEnv(t)
 
-	testDBEnv := &privacyenabledstate.LevelDBCommonStorageTestEnv{}
+	testDBEnv := &privacyenabledstate.LevelDBTestEnv{}
 	testDBEnv.Init(t)
 	testDB := testDBEnv.GetDBHandle(testLedgerID)
 	testBookkeepingEnv := bookkeeping.NewTestEnv(t)
@@ -50,24 +57,22 @@ func newTestHistoryEnv(t *testing.T) *levelDBLockBasedHistoryEnv {
 		t.Fatalf("Failed to create history database directory: %s", err)
 	}
 
-	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
-	assert.NoError(t, err)
-	txMgr, err := lockbasedtxmgr.NewLockBasedTxMgr(
-		testLedgerID,
-		testDB,
-		nil,
-		nil,
-		testBookkeepingEnv.TestProvider,
-		&mock.DeployedChaincodeInfoProvider{},
-		nil,
-		cryptoProvider,
-	)
+	txmgrInitializer := &txmgr.Initializer{
+		LedgerID:            testLedgerID,
+		DB:                  testDB,
+		StateListeners:      nil,
+		BtlPolicy:           nil,
+		BookkeepingProvider: testBookkeepingEnv.TestProvider,
+		CCInfoProvider:      &mock.DeployedChaincodeInfoProvider{},
+		CustomTxProcessors:  nil,
+		HashFunc:            testHashFunc,
+	}
+	txMgr, err := txmgr.NewLockBasedTxMgr(txmgrInitializer)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	testHistoryDBProvider, err := NewDBProvider(testHistoryDBPath)
-	assert.NoError(t, err)
-	testHistoryDB, err := testHistoryDBProvider.GetDBHandle("TestHistoryDB")
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	testHistoryDB := testHistoryDBProvider.GetDBHandle("TestHistoryDB")
 
 	return &levelDBLockBasedHistoryEnv{
 		t,
@@ -95,7 +100,7 @@ func (env *levelDBLockBasedHistoryEnv) cleanup() {
 
 type testBlockStoreEnv struct {
 	t               testing.TB
-	provider        *fsblkstorage.FsBlockstoreProvider
+	provider        *blkstorage.BlockStoreProvider
 	blockStorageDir string
 }
 
@@ -105,7 +110,7 @@ func newBlockStorageTestEnv(t testing.TB) *testBlockStoreEnv {
 	if err != nil {
 		panic(err)
 	}
-	conf := fsblkstorage.NewConf(testPath, 0)
+	conf := blkstorage.NewConf(testPath, 0)
 
 	attrsToIndex := []blkstorage.IndexableAttr{
 		blkstorage.IndexableAttrBlockHash,
@@ -115,9 +120,9 @@ func newBlockStorageTestEnv(t testing.TB) *testBlockStoreEnv {
 	}
 	indexConfig := &blkstorage.IndexConfig{AttrsToIndex: attrsToIndex}
 
-	p, err := fsblkstorage.NewProvider(conf, indexConfig, &disabled.Provider{})
-	assert.NoError(t, err)
-	return &testBlockStoreEnv{t, p.(*fsblkstorage.FsBlockstoreProvider), testPath}
+	p, err := blkstorage.NewProvider(conf, indexConfig, &disabled.Provider{})
+	require.NoError(t, err)
+	return &testBlockStoreEnv{t, p, testPath}
 }
 
 func (env *testBlockStoreEnv) cleanup() {

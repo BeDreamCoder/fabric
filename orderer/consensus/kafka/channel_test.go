@@ -17,20 +17,19 @@ limitations under the License.
 package kafka
 
 import (
-	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestChannel(t *testing.T) {
 	chn := newChannel(channelNameForTest(t), defaultPartition)
 
-	expectedTopic := fmt.Sprintf("%s", channelNameForTest(t))
+	expectedTopic := channelNameForTest(t)
 	actualTopic := chn.topic()
-	assert.Equal(t, expectedTopic, actualTopic, "Got the wrong topic, expected %s, got %s instead", expectedTopic, actualTopic)
+	require.Equal(t, expectedTopic, actualTopic, "Got the wrong topic, expected %s, got %s instead", expectedTopic, actualTopic)
 
 	expectedPartition := int32(defaultPartition)
 	actualPartition := chn.partition()
-	assert.Equal(t, expectedPartition, actualPartition, "Got the wrong partition, expected %d, got %d instead", expectedPartition, actualPartition)
+	require.Equal(t, expectedPartition, actualPartition, "Got the wrong partition, expected %d, got %d instead", expectedPartition, actualPartition)
 }

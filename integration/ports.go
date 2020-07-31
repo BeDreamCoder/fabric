@@ -23,7 +23,8 @@ const (
 )
 
 const (
-	DiscoveryBasePort TestPortRange = basePort + portsPerSuite*iota
+	ConfigBasePort TestPortRange = basePort + portsPerSuite*iota
+	DiscoveryBasePort
 	E2EBasePort
 	GossipBasePort
 	IdemixBasePort
@@ -31,6 +32,7 @@ const (
 	LifecyclePort
 	MSPPort
 	NWOBasePort
+	PKCS11Port
 	PluggableBasePort
 	PrivateDataBasePort
 	RaftBasePort

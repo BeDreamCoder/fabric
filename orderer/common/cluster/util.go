@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"bytes"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -17,15 +18,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hyperledger/fabric-config/protolator"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/configtx"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/policies"
-	"github.com/hyperledger/fabric/common/tools/protolator"
 	"github.com/hyperledger/fabric/common/util"
-	"github.com/hyperledger/fabric/core/comm"
+	"github.com/hyperledger/fabric/internal/pkg/comm"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -132,7 +133,18 @@ func (dialer *PredicateDialer) Dial(address string, verifyFunc RemoteVerifier) (
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	return client.NewConnection(address)
+	return client.NewConnection(address, func(tlsConfig *tls.Config) {
+		// We need to dynamically overwrite the TLS root CAs,
+		// as they may be updated.
+		dialer.lock.RLock()
+		serverRootCAs := dialer.Config.Clone().SecOpts.ServerRootCAs
+		dialer.lock.RUnlock()
+
+		tlsConfig.RootCAs = x509.NewCertPool()
+		for _, pem := range serverRootCAs {
+			tlsConfig.RootCAs.AppendCertsFromPEM(pem)
+		}
+	})
 }
 
 // DERtoPEM returns a PEM representation of the DER
@@ -201,12 +213,14 @@ func VerifyBlocks(blockBuff []*common.Block, signatureVerifier BlockVerifier) er
 	}
 
 	var config *common.ConfigEnvelope
+	var isLastBlockConfigBlock bool
 	// Verify all configuration blocks that are found inside the block batch,
 	// with the configuration that was committed (nil) or with one that is picked up
 	// during iteration over the block batch.
 	for _, block := range blockBuff {
 		configFromBlock, err := ConfigFromBlock(block)
 		if err == errNotAConfig {
+			isLastBlockConfigBlock = false
 			continue
 		}
 		if err != nil {
@@ -217,10 +231,17 @@ func VerifyBlocks(blockBuff []*common.Block, signatureVerifier BlockVerifier) er
 			return err
 		}
 		config = configFromBlock
+		isLastBlockConfigBlock = true
 	}
 
 	// Verify the last block's signature
 	lastBlock := blockBuff[len(blockBuff)-1]
+
+	// If last block is a config block, we verified it using the policy of the previous block, so it's valid.
+	if isLastBlockConfigBlock {
+		return nil
+	}
+
 	return VerifyBlockSignature(lastBlock, signatureVerifier, config)
 }
 
@@ -630,9 +651,6 @@ func LastConfigBlock(block *common.Block, blockRetriever BlockRetriever) (*commo
 	}
 	if blockRetriever == nil {
 		return nil, errors.New("nil blockRetriever")
-	}
-	if block.Metadata == nil || len(block.Metadata.Metadata) <= int(common.BlockMetadataIndex_LAST_CONFIG) {
-		return nil, errors.New("no metadata in block")
 	}
 	lastConfigBlockNum, err := protoutil.GetLastConfigIndexFromBlock(block)
 	if err != nil {

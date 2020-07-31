@@ -24,14 +24,14 @@ import (
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/bccsp/factory"
 	"github.com/hyperledger/fabric/common/flogging"
-	"github.com/hyperledger/fabric/core/comm"
+	"github.com/hyperledger/fabric/internal/pkg/comm"
 	"github.com/hyperledger/fabric/internal/pkg/identity"
 	"github.com/hyperledger/fabric/orderer/common/cluster"
 	"github.com/hyperledger/fabric/orderer/common/cluster/mocks"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/onsi/gomega"
 	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
@@ -107,7 +107,7 @@ func (d *countingDialer) assertAllConnectionsClosed(t *testing.T) {
 	for atomic.LoadUint32(&d.connectionCount) != uint32(0) && time.Now().Before(timeLimit) {
 		time.Sleep(time.Millisecond)
 	}
-	assert.Equal(t, uint32(0), atomic.LoadUint32(&d.connectionCount))
+	require.Equal(t, uint32(0), atomic.LoadUint32(&d.connectionCount))
 }
 
 func (d *countingDialer) Dial(address cluster.EndpointCriteria) (*grpc.ClientConn, error) {
@@ -179,9 +179,19 @@ func (ds *deliverServer) Deliver(stream orderer.AtomicBroadcast_DeliverServer) e
 	if err != nil {
 		panic(err)
 	}
+
+	// FAB-16233 This is meant to mitigate timeouts when
+	// seekAssertions does not receive a value
+	timer := time.NewTimer(1 * time.Minute)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		panic("timed out waiting for seek assertions to receive a value")
 	// Get the next seek assertion and ensure the next seek is of the expected type
-	seekAssert := <-ds.seekAssertions
-	seekAssert(seekInfo, channel)
+	case seekAssert := <-ds.seekAssertions:
+		seekAssert(seekInfo, channel)
+	}
 
 	if seekInfo.GetStart().GetSpecified() != nil {
 		return ds.deliverBlocks(stream)
@@ -228,10 +238,10 @@ func (ds *deliverServer) setBlocks(blocks chan *orderer.DeliverResponse) {
 
 func (ds *deliverServer) port() int {
 	_, portStr, err := net.SplitHostPort(ds.srv.Address())
-	assert.NoError(ds.t, err)
+	require.NoError(ds.t, err)
 
 	port, err := strconv.ParseInt(portStr, 10, 32)
-	assert.NoError(ds.t, err)
+	require.NoError(ds.t, err)
 	return int(port)
 }
 
@@ -246,7 +256,7 @@ func (ds *deliverServer) resurrect() {
 	ds.srv.Stop()
 	// And re-create the gRPC server on that port
 	ds.srv, err = comm.NewGRPCServer(fmt.Sprintf("127.0.0.1:%d", ds.port()), comm.ServerConfig{})
-	assert.NoError(ds.t, err)
+	require.NoError(ds.t, err)
 	orderer.RegisterAtomicBroadcastServer(ds.srv.Server(), ds)
 	go ds.srv.Start()
 }
@@ -264,16 +274,19 @@ func (ds *deliverServer) enqueueResponse(seq uint64) {
 
 func (ds *deliverServer) addExpectProbeAssert() {
 	ds.seekAssertions <- func(info *orderer.SeekInfo, _ string) {
-		assert.NotNil(ds.t, info.GetStart().GetNewest())
-		assert.Equal(ds.t, info.ErrorResponse, orderer.SeekInfo_BEST_EFFORT)
+		require.NotNil(ds.t, info.GetStart().GetNewest())
+		require.Equal(ds.t, info.ErrorResponse, orderer.SeekInfo_BEST_EFFORT)
 	}
 }
 
 func (ds *deliverServer) addExpectPullAssert(seq uint64) {
 	ds.seekAssertions <- func(info *orderer.SeekInfo, _ string) {
-		assert.NotNil(ds.t, info.GetStart().GetSpecified())
-		assert.Equal(ds.t, seq, info.GetStart().GetSpecified().Number)
-		assert.Equal(ds.t, info.ErrorResponse, orderer.SeekInfo_BEST_EFFORT)
+		seekPosition := info.GetStart()
+		require.NotNil(ds.t, seekPosition)
+		seekSpecified := seekPosition.GetSpecified()
+		require.NotNil(ds.t, seekSpecified)
+		require.Equal(ds.t, seq, seekSpecified.Number)
+		require.Equal(ds.t, info.ErrorResponse, orderer.SeekInfo_BEST_EFFORT)
 	}
 }
 
@@ -336,9 +349,9 @@ func TestBlockPullerBasicHappyPath(t *testing.T) {
 	}
 
 	for i := 5; i <= 10; i++ {
-		assert.Equal(t, uint64(i), bp.PullBlock(uint64(i)).Header.Number)
+		require.Equal(t, uint64(i), bp.PullBlock(uint64(i)).Header.Number)
 	}
-	assert.Len(t, osn.blockResponses, 0)
+	require.Len(t, osn.blockResponses, 0)
 
 	bp.Close()
 	dialer.assertAllConnectionsClosed(t)
@@ -369,9 +382,9 @@ func TestBlockPullerDuplicate(t *testing.T) {
 	}
 
 	for i := 1; i <= 3; i++ {
-		assert.Equal(t, uint64(i), bp.PullBlock(uint64(i)).Header.Number)
+		require.Equal(t, uint64(i), bp.PullBlock(uint64(i)).Header.Number)
 	}
-	assert.Len(t, osn.blockResponses, 0)
+	require.Len(t, osn.blockResponses, 0)
 
 	bp.Close()
 	dialer.assertAllConnectionsClosed(t)
@@ -420,11 +433,11 @@ func TestBlockPullerHeavyBlocks(t *testing.T) {
 	for i := uint64(0); i < 5; i++ {
 		enqueueBlockBatch(i*10+uint64(1), i*10+uint64(10))
 		for seq := i*10 + uint64(1); seq <= i*10+uint64(10); seq++ {
-			assert.Equal(t, seq, bp.PullBlock(seq).Header.Number)
+			require.Equal(t, seq, bp.PullBlock(seq).Header.Number)
 		}
 	}
 
-	assert.Equal(t, 50, gotBlockMessageCount)
+	require.Equal(t, 50, gotBlockMessageCount)
 	bp.Close()
 	dialer.assertAllConnectionsClosed(t)
 }
@@ -457,10 +470,10 @@ func TestBlockPullerClone(t *testing.T) {
 	// and override its channel
 	bpClone.Channel = "foo"
 	// Ensure the channel change doesn't reflect in the original puller
-	assert.Equal(t, "mychannel", bp.Channel)
+	require.Equal(t, "mychannel", bp.Channel)
 
 	block := bp.PullBlock(1)
-	assert.Equal(t, uint64(1), block.Header.Number)
+	require.Equal(t, uint64(1), block.Header.Number)
 
 	// After the original block puller is closed, the
 	// clone should not be affected
@@ -476,7 +489,7 @@ func TestBlockPullerClone(t *testing.T) {
 	osn1.enqueueResponse(2)
 
 	block = bpClone.PullBlock(2)
-	assert.Equal(t, uint64(2), block.Header.Number)
+	require.Equal(t, uint64(2), block.Header.Number)
 
 	bpClone.Close()
 	dialer.assertAllConnectionsClosed(t)
@@ -513,11 +526,11 @@ func TestBlockPullerHeightsByEndpoints(t *testing.T) {
 	osn3.enqueueResponse(5)
 
 	res, err := bp.HeightsByEndpoints()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	expected := map[string]uint64{
 		osn3.srv.Address(): 6,
 	}
-	assert.Equal(t, expected, res)
+	require.Equal(t, expected, res)
 
 	bp.Close()
 	dialer.assertAllConnectionsClosed(t)
@@ -565,14 +578,14 @@ func TestBlockPullerMultipleOrderers(t *testing.T) {
 	initialTotalBlockAmount := len(osn1.blockResponses) + len(osn2.blockResponses) + len(osn3.blockResponses)
 
 	for i := 3; i <= 5; i++ {
-		assert.Equal(t, uint64(i), bp.PullBlock(uint64(i)).Header.Number)
+		require.Equal(t, uint64(i), bp.PullBlock(uint64(i)).Header.Number)
 	}
 
 	// Assert the cumulative amount of blocks in the OSNs went down by 6:
 	// blocks 3, 4, 5 were pulled - that's 3 blocks.
 	// block 5 was pulled 3 times at the probe phase.
 	finalTotalBlockAmount := len(osn1.blockResponses) + len(osn2.blockResponses) + len(osn3.blockResponses)
-	assert.Equal(t, initialTotalBlockAmount-6, finalTotalBlockAmount)
+	require.Equal(t, initialTotalBlockAmount-6, finalTotalBlockAmount)
 
 	bp.Close()
 	dialer.assertAllConnectionsClosed(t)
@@ -636,9 +649,9 @@ func TestBlockPullerFailover(t *testing.T) {
 	}()
 
 	// Assert reception of blocks 1 to 3
-	assert.Equal(t, uint64(1), bp.PullBlock(uint64(1)).Header.Number)
-	assert.Equal(t, uint64(2), bp.PullBlock(uint64(2)).Header.Number)
-	assert.Equal(t, uint64(3), bp.PullBlock(uint64(3)).Header.Number)
+	require.Equal(t, uint64(1), bp.PullBlock(uint64(1)).Header.Number)
+	require.Equal(t, uint64(2), bp.PullBlock(uint64(2)).Header.Number)
+	require.Equal(t, uint64(3), bp.PullBlock(uint64(3)).Header.Number)
 
 	bp.Close()
 	dialer.assertAllConnectionsClosed(t)
@@ -679,7 +692,7 @@ func TestBlockPullerNoneResponsiveOrderer(t *testing.T) {
 		defer once.Do(waitForConnection.Done)
 		s := entry.Message[len("Sending request for block [1] to 127.0.0.1:"):]
 		port, err := strconv.ParseInt(s, 10, 32)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		// If osn2 is the current orderer we're connected to,
 		// the orderer we're not connected to, is osn1
 		if osn2.port() == int(port) {
@@ -709,9 +722,9 @@ func TestBlockPullerNoneResponsiveOrderer(t *testing.T) {
 	}()
 
 	// Assert reception of blocks 1 to 3
-	assert.Equal(t, uint64(1), bp.PullBlock(uint64(1)).Header.Number)
-	assert.Equal(t, uint64(2), bp.PullBlock(uint64(2)).Header.Number)
-	assert.Equal(t, uint64(3), bp.PullBlock(uint64(3)).Header.Number)
+	require.Equal(t, uint64(1), bp.PullBlock(uint64(1)).Header.Number)
+	require.Equal(t, uint64(2), bp.PullBlock(uint64(2)).Header.Number)
+	require.Equal(t, uint64(3), bp.PullBlock(uint64(3)).Header.Number)
 
 	bp.Close()
 	dialer.assertAllConnectionsClosed(t)
@@ -751,8 +764,8 @@ func TestBlockPullerNoOrdererAliveAtStartup(t *testing.T) {
 		osn.enqueueResponse(2)
 	}()
 
-	assert.Equal(t, uint64(1), bp.PullBlock(1).Header.Number)
-	assert.Equal(t, uint64(2), bp.PullBlock(2).Header.Number)
+	require.Equal(t, uint64(1), bp.PullBlock(1).Header.Number)
+	require.Equal(t, uint64(2), bp.PullBlock(2).Header.Number)
 
 	bp.Close()
 	dialer.assertAllConnectionsClosed(t)
@@ -892,9 +905,9 @@ func TestBlockPullerFailures(t *testing.T) {
 			osn.enqueueResponse(2)
 			osn.enqueueResponse(3)
 
-			assert.Equal(t, uint64(1), bp.PullBlock(uint64(1)).Header.Number)
-			assert.Equal(t, uint64(2), bp.PullBlock(uint64(2)).Header.Number)
-			assert.Equal(t, uint64(3), bp.PullBlock(uint64(3)).Header.Number)
+			require.Equal(t, uint64(1), bp.PullBlock(uint64(1)).Header.Number)
+			require.Equal(t, uint64(2), bp.PullBlock(uint64(2)).Header.Number)
+			require.Equal(t, uint64(3), bp.PullBlock(uint64(3)).Header.Number)
 
 			bp.Close()
 			dialer.assertAllConnectionsClosed(t)
@@ -1059,7 +1072,7 @@ func TestImpatientStreamFailure(t *testing.T) {
 		return
 	}
 	_, err = stream.Recv()
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestBlockPullerMaxRetriesExhausted(t *testing.T) {
@@ -1124,11 +1137,11 @@ func TestBlockPullerMaxRetriesExhausted(t *testing.T) {
 	bp.MaxTotalBufferBytes = 1
 
 	// Assert reception of blocks 1 to 3
-	assert.Equal(t, uint64(1), bp.PullBlock(uint64(1)).Header.Number)
-	assert.Equal(t, uint64(2), bp.PullBlock(uint64(2)).Header.Number)
-	assert.Nil(t, bp.PullBlock(uint64(3)))
+	require.Equal(t, uint64(1), bp.PullBlock(uint64(1)).Header.Number)
+	require.Equal(t, uint64(2), bp.PullBlock(uint64(2)).Header.Number)
+	require.Nil(t, bp.PullBlock(uint64(3)))
 
 	bp.Close()
 	dialer.assertAllConnectionsClosed(t)
-	assert.True(t, exhaustedRetryAttemptsLogged)
+	require.True(t, exhaustedRetryAttemptsLogged)
 }

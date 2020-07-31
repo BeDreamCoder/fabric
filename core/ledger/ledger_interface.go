@@ -8,6 +8,8 @@ package ledger
 
 import (
 	"fmt"
+	"hash"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-lib-go/healthz"
@@ -18,7 +20,11 @@ import (
 	"github.com/hyperledger/fabric/bccsp"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
 	"github.com/hyperledger/fabric/common/metrics"
-	"github.com/hyperledger/fabric/core/ledger/util/couchdb"
+)
+
+const (
+	GoLevelDB = "goleveldb"
+	CouchDB   = "CouchDB"
 )
 
 // Initializer encapsulates dependencies for PeerLedgerProvider
@@ -31,7 +37,7 @@ type Initializer struct {
 	HealthCheckRegistry             HealthCheckRegistry
 	Config                          *Config
 	CustomTxProcessors              map[common.HeaderType]CustomTxProcessor
-	Hasher                          Hasher
+	HashProvider                    HashProvider
 }
 
 // Config is a structure used to configure a ledger provider.
@@ -44,16 +50,56 @@ type Config struct {
 	PrivateDataConfig *PrivateDataConfig
 	// HistoryDBConfig holds the configuration parameters for the transaction history database.
 	HistoryDBConfig *HistoryDBConfig
+	// SnapshotsConfig holds the configuration parameters for the snapshots.
+	SnapshotsConfig *SnapshotsConfig
 }
 
 // StateDBConfig is a structure used to configure the state parameters for the ledger.
 type StateDBConfig struct {
 	// StateDatabase is the database to use for storing last known state.  The
-	// two supported options are "goleveldb" and "CouchDB".
+	// two supported options are "goleveldb" and "CouchDB" (captured in the constants GoLevelDB and CouchDB respectively).
 	StateDatabase string
 	// CouchDB is the configuration for CouchDB.  It is used when StateDatabase
 	// is set to "CouchDB".
-	CouchDB *couchdb.Config
+	CouchDB *CouchDBConfig
+}
+
+// CouchDBConfig is a structure used to configure a CouchInstance.
+type CouchDBConfig struct {
+	// Address is the hostname:port of the CouchDB database instance.
+	Address string
+	// Username is the username used to authenticate with CouchDB.  This username
+	// must have read and write access permissions.
+	Username string
+	// Password is the password for Username.
+	Password string
+	// MaxRetries is the maximum number of times to retry CouchDB operations on
+	// failure.
+	MaxRetries int
+	// MaxRetriesOnStartup is the maximum number of times to retry CouchDB operations on
+	// failure when initializing the ledger.
+	MaxRetriesOnStartup int
+	// RequestTimeout is the timeout used for CouchDB operations.
+	RequestTimeout time.Duration
+	// InternalQueryLimit is the maximum number of records to return internally
+	// when querying CouchDB.
+	InternalQueryLimit int
+	// MaxBatchUpdateSize is the maximum number of records to included in CouchDB
+	// bulk update operations.
+	MaxBatchUpdateSize int
+	// WarmIndexesAfterNBlocks is the number of blocks after which to warm any
+	// CouchDB indexes.
+	WarmIndexesAfterNBlocks int
+	// CreateGlobalChangesDB determines whether or not to create the "_global_changes"
+	// system database.
+	CreateGlobalChangesDB bool
+	// RedoLogPath is the directory where the CouchDB redo log files are stored.
+	RedoLogPath string
+	// UserCacheSizeMBs denotes the user specified maximum mega bytes (MB) to be allocated
+	// for the user state cache (i.e., all chaincodes deployed by the user). Note that
+	// UserCacheSizeMBs needs to be a multiple of 32 MB. If it is not a multiple of 32 MB,
+	// the peer would round the size to the next multiple of 32 MB.
+	UserCacheSizeMBs int
 }
 
 // PrivateDataConfig is a structure used to configure a private data storage provider.
@@ -74,12 +120,20 @@ type HistoryDBConfig struct {
 	Enabled bool
 }
 
+// SnapshotsConfig is a structure used to configure snapshot function
+type SnapshotsConfig struct {
+	// RootDir is the top-level directory for the snapshots.
+	RootDir string
+}
+
 // PeerLedgerProvider provides handle to ledger instances
 type PeerLedgerProvider interface {
-	// Create creates a new ledger with the given genesis block.
+	// CreateFromGenesisBlock creates a new ledger with the given genesis block.
 	// This function guarantees that the creation of ledger and committing the genesis block would an atomic action
 	// The chain id retrieved from the genesis block is treated as a ledger id
-	Create(genesisBlock *common.Block) (PeerLedger, error)
+	CreateFromGenesisBlock(genesisBlock *common.Block) (PeerLedger, error)
+	// CreateFromSnapshot creates a new ledger from a snapshot
+	CreateFromSnapshot(snapshotDir string) (PeerLedger, error)
 	// Open opens an already created ledger
 	Open(ledgerID string) (PeerLedger, error)
 	// Exists tells whether the ledger with given id exists
@@ -140,6 +194,30 @@ type PeerLedger interface {
 	//     missing info is recorded in the ledger (or)
 	// (3) the block is committed and does not contain any pvtData.
 	DoesPvtDataInfoExist(blockNum uint64) (bool, error)
+
+	// SubmitSnapshotRequest submits a snapshot request for the specified height.
+	// The request will be stored in the ledger until the ledger's block height is equal to
+	// the specified height and the snapshot generation is completed.
+	// When height is 0, it will generate a snapshot at the current block height.
+	// It returns an error if the specified height is smaller than the ledger's block height.
+	SubmitSnapshotRequest(height uint64) error
+	// CancelSnapshotRequest cancels the previously submitted request.
+	// It returns an error if such a request does not exist or is under processing.
+	CancelSnapshotRequest(height uint64) error
+	// PendingSnapshotRequests returns a list of heights for the pending (or under processing) snapshot requests.
+	PendingSnapshotRequests() ([]uint64, error)
+	// ListSnapshots returns the information for available snapshots.
+	// It returns a list of strings representing the following JSON object:
+	// type snapshotSignableMetadata struct {
+	//    ChannelName        string            `json:"channel_name"`
+	//    ChannelHeight      uint64            `json:"channel_height"`
+	//    LastBlockHashInHex string            `json:"last_block_hash"`
+	//    FilesAndHashes     map[string]string `json:"snapshot_files_raw_hashes"`
+	// }
+	ListSnapshots() ([]string, error)
+	// DeleteSnapshot deletes the snapshot files except the metadata file.
+	// It returns an error if no such a snapshot exists.
+	DeleteSnapshot(height uint64) error
 }
 
 // SimpleQueryExecutor encapsulates basic functions
@@ -170,24 +248,24 @@ type QueryExecutor interface {
 	GetStateMetadata(namespace, key string) (map[string][]byte, error)
 	// GetStateMultipleKeys gets the values for multiple keys in a single call
 	GetStateMultipleKeys(namespace string, keys []string) ([][]byte, error)
-	// GetStateRangeScanIteratorWithMetadata returns an iterator that contains all the key-values between given key ranges.
+	// GetStateRangeScanIteratorWithPagination returns an iterator that contains all the key-values between given key ranges.
 	// startKey is included in the results and endKey is excluded. An empty startKey refers to the first available key
 	// and an empty endKey refers to the last available key. For scanning all the keys, both the startKey and the endKey
 	// can be supplied as empty strings. However, a full scan should be used judiciously for performance reasons.
-	// metadata is a map of additional query parameters
+	// The page size parameter limits the number of returned results.
 	// The returned ResultsIterator contains results of type *KV which is defined in fabric-protos/ledger/queryresult.
-	GetStateRangeScanIteratorWithMetadata(namespace string, startKey, endKey string, metadata map[string]interface{}) (QueryResultsIterator, error)
+	GetStateRangeScanIteratorWithPagination(namespace string, startKey, endKey string, pageSize int32) (QueryResultsIterator, error)
 	// ExecuteQuery executes the given query and returns an iterator that contains results of type specific to the underlying data store.
 	// Only used for state databases that support query
 	// For a chaincode, the namespace corresponds to the chaincodeId
 	// The returned ResultsIterator contains results of type *KV which is defined in fabric-protos/ledger/queryresult.
 	ExecuteQuery(namespace, query string) (commonledger.ResultsIterator, error)
-	// ExecuteQueryWithMetadata executes the given query and returns an iterator that contains results of type specific to the underlying data store.
-	// metadata is a map of additional query parameters
+	// ExecuteQueryWithPagination executes the given query and returns an iterator that contains results of type specific to the underlying data store.
+	// The bookmark and page size parameters are associated with the pagination.
 	// Only used for state databases that support query
 	// For a chaincode, the namespace corresponds to the chaincodeId
 	// The returned ResultsIterator contains results of type *KV which is defined in fabric-protos/ledger/queryresult.
-	ExecuteQueryWithMetadata(namespace, query string, metadata map[string]interface{}) (QueryResultsIterator, error)
+	ExecuteQueryWithPagination(namespace, query, bookmark string, pageSize int32) (QueryResultsIterator, error)
 	// GetPrivateData gets the value of a private data item identified by a tuple <namespace, collection, key>
 	GetPrivateData(namespace, collection, key string) ([]byte, error)
 	// GetPrivateDataMetadata gets the metadata of a private data item identified by a tuple <namespace, collection, key>
@@ -425,6 +503,7 @@ func (txSim *TxSimulationResults) ContainsPvtWrites() bool {
 // and result in a panic.
 // The function Initialize is invoked only once at the time of opening the ledger.
 type StateListener interface {
+	Name() string
 	Initialize(ledgerID string, qe SimpleQueryExecutor) error
 	InterestedInNamespaces() []string
 	HandleStateUpdates(trigger *StateUpdateTrigger) error
@@ -552,10 +631,14 @@ type DeployedChaincodeInfoProvider interface {
 	UpdatedChaincodes(stateUpdates map[string][]*kvrwset.KVWrite) ([]*ChaincodeLifecycleInfo, error)
 	// ChaincodeInfo returns the info about a deployed chaincode
 	ChaincodeInfo(channelName, chaincodeName string, qe SimpleQueryExecutor) (*DeployedChaincodeInfo, error)
+	// AllChaincodesInfo returns the mapping of chaincode name to DeployedChaincodeInfo for all the deployed chaincodes
+	AllChaincodesInfo(channelName string, qe SimpleQueryExecutor) (map[string]*DeployedChaincodeInfo, error)
 	// CollectionInfo returns the proto msg that defines the named collection. This function can be called for both explicit and implicit collections
 	CollectionInfo(channelName, chaincodeName, collectionName string, qe SimpleQueryExecutor) (*peer.StaticCollectionConfig, error)
 	// ImplicitCollections returns a slice that contains one proto msg for each of the implicit collections
 	ImplicitCollections(channelName, chaincodeName string, qe SimpleQueryExecutor) ([]*peer.StaticCollectionConfig, error)
+	// GenerateImplicitCollectionForOrg generates implicit collection for the org
+	GenerateImplicitCollectionForOrg(mspid string) *peer.StaticCollectionConfig
 	// AllCollectionsConfigPkg returns a combined collection config pkg that contains both explicit and implicit collections
 	AllCollectionsConfigPkg(channelName, chaincodeName string, qe SimpleQueryExecutor) (*peer.CollectionConfigPackage, error)
 }
@@ -600,7 +683,7 @@ type HealthCheckRegistry interface {
 // to be able to listen to chaincode lifecycle events. 'dbArtifactsTar' represents db specific artifacts
 // (such as index specs) packaged in a tar. Note that this interface is redefined here (in addition to
 // the one defined in ledger/cceventmgmt package). Using the same interface for the new lifecycle path causes
-// a cyclic import dependency. Moreover, eventually the whole package ledger/cceventmgmt is intented to
+// a cyclic import dependency. Moreover, eventually the whole package ledger/cceventmgmt is intended to
 // be removed when migration to new lifecycle is mandated.
 type ChaincodeLifecycleEventListener interface {
 	// HandleChaincodeDeploy is invoked when chaincode installed + defined becomes true.
@@ -652,10 +735,10 @@ func (e *InvalidTxError) Error() string {
 	return e.Msg
 }
 
-// Hasher implements the hash function that should be used for all ledger components.
+// HashProvider provides access to a hash.Hash for ledger components.
 // Currently works at a stepping stone to decrease surface area of bccsp
-type Hasher interface {
-	Hash(msg []byte, opts bccsp.HashOpts) (hash []byte, err error)
+type HashProvider interface {
+	GetHash(opts bccsp.HashOpts) (hash.Hash, error)
 }
 
 //go:generate counterfeiter -o mock/state_listener.go -fake-name StateListener . StateListener

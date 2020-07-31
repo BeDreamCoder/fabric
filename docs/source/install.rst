@@ -1,5 +1,5 @@
-Install Samples, Binaries and Docker Images
-===========================================
+Install Samples, Binaries, and Docker Images
+============================================
 
 While we work on developing real installers for the Hyperledger Fabric
 binaries, we provide a script that will download and install samples and
@@ -13,9 +13,8 @@ Hyperledger Fabric.
           Please visit the :doc:`prereqs` if you haven't previously installed
           it.
 
-          If you are using Docker Toolbox on Windows 7 or macOS, you
-          will need to use a location under ``C:\Users`` (Windows 7) or
-          ``/Users`` (macOS) when installing and running the samples.
+          If you are using Docker Toolbox or macOS, you
+          will need to use a location under ``/Users`` (macOS) when installing and running the samples.
 
           If you are using Docker for Mac, you will need to use a location
           under ``/Users``, ``/Volumes``, ``/private``, or ``/tmp``.  To use a different
@@ -44,16 +43,16 @@ the binaries and images.
 
 .. code:: bash
 
-  curl -sSL http://bit.ly/2ysbOFE | bash -s
+  curl -sSL https://bit.ly/2ysbOFE | bash -s
 
-.. note:: If you want a specific release, pass a version identifier for Fabric,
-          Fabric-ca and thirdparty Docker images.
-          The command below demonstrates how to download **Fabric v2.0.0 Alpha release v2.0.0-alpha**
+.. note:: If you want a specific release, pass a version identifier for Fabric and Fabric-CA docker images.
+          The command below demonstrates how to download the latest production releases -
+          **Fabric v2.2.0** and **Fabric CA v1.4.7**
 
 .. code:: bash
 
-  curl -sSL http://bit.ly/2ysbOFE | bash -s -- <fabric_version> <fabric-ca_version> <thirdparty_version>
-  curl -sSL http://bit.ly/2ysbOFE | bash -s -- 2.0.0-alpha 2.0.0-alpha 0.4.15
+  curl -sSL https://bit.ly/2ysbOFE | bash -s -- <fabric_version> <fabric-ca_version>
+  curl -sSL https://bit.ly/2ysbOFE | bash -s -- 2.2.0 1.4.7
 
 .. note:: If you get an error running the above curl command, you may
           have too old a version of curl that does not handle
@@ -63,7 +62,7 @@ the binaries and images.
 	  information on where to find the latest version of curl and
 	  get the right environment. Alternately, you can substitute
 	  the un-shortened URL:
-	  https://raw.githubusercontent.com/hyperledger/fabric/master/scripts/bootstrap.sh
+	  https://raw.githubusercontent.com/hyperledger/fabric/{BRANCH}/scripts/bootstrap.sh
 
 The command above downloads and executes a bash script
 that will download and extract all of the platform-specific binaries you
@@ -77,7 +76,8 @@ created above. It retrieves the following platform-specific binaries:
   * ``idemixgen``
   * ``orderer``,
   * ``peer``,
-  * ``fabric-ca-client``
+  * ``fabric-ca-client``,
+  * ``fabric-ca-server``
 
 and places them in the ``bin`` sub-directory of the current working
 directory.

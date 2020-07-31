@@ -6,9 +6,6 @@ you're an architect, administrator or developer, you can use this topic to get a
 solid understanding of the major structure and process components in a
 Hyperledger Fabric blockchain network. This topic will use a manageable worked
 example that introduces all of the major components in a blockchain network.
-After understanding this example you can read more detailed information about
-these components elsewhere in the documentation, or try
-[building a sample network](../build_network.html).
 
 After reading this topic and understanding the concept of policies, you will
 have a solid understanding of the decisions that organizations need to make to
@@ -300,10 +297,12 @@ to access. We can think of L1 as being **physically hosted** on P1, but
 add more peers to the channel.
 
 A key part of a P1's configuration is an X.509 identity issued by CA1 which
-associates P1 with organization R1. Once P1 is started, it can **join** channel
-C1 using the orderer O4. When O4 receives this join request, it uses the channel
-configuration CC1 to determine P1's permissions on this channel. For example,
-CC1 determines whether P1 can read and/or write information to the ledger L1.
+associates P1 with organization R1. When R1 administrator takes the
+action of joining peer P1 to channel C1, and the peer starts pulling blocks from
+the orderer O4, the orderer uses the channel configuration
+CC1 to determine P1's permissions on this channel. For example, policy in CC1
+determines whether P1 (or the organization R1) can read and/or write on the
+channel C1.
 
 Notice how peers are joined to channels by the organizations that own them, and
 though we've only added one peer, we'll see how  there can be multiple peer
@@ -935,7 +934,7 @@ organizations may have their permissions increased or decreased. Let's
 investigate a little more how change policy is implemented in Hyperledger
 Fabric.
 
-They key point of understanding is that policy change is managed by a
+The key point of understanding is that policy change is managed by a
 policy within the policy itself.  The **modification policy**, or
 **mod_policy** for short, is a first class policy within a network or channel
 configuration that manages change. Let's give two brief examples of how we've

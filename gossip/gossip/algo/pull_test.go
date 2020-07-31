@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric/gossip/util"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -159,30 +159,27 @@ func (p *pullTestInstance) SendRes(items []string, context interface{}, nonce ui
 }
 
 func TestPullEngine_Add(t *testing.T) {
-	t.Parallel()
 	peers := make(map[string]*pullTestInstance)
 	inst1 := newPushPullTestInstance("p1", peers)
 	defer inst1.Stop()
 	inst1.Add("0")
 	inst1.Add("0")
-	assert.True(t, inst1.PullEngine.state.Exists("0"))
+	require.True(t, inst1.PullEngine.state.Exists("0"))
 }
 
 func TestPullEngine_Remove(t *testing.T) {
-	t.Parallel()
 	peers := make(map[string]*pullTestInstance)
 	inst1 := newPushPullTestInstance("p1", peers)
 	defer inst1.Stop()
 	inst1.Add("0")
-	assert.True(t, inst1.PullEngine.state.Exists("0"))
+	require.True(t, inst1.PullEngine.state.Exists("0"))
 	inst1.Remove("0")
-	assert.False(t, inst1.PullEngine.state.Exists("0"))
+	require.False(t, inst1.PullEngine.state.Exists("0"))
 	inst1.Remove("0") // remove twice
-	assert.False(t, inst1.PullEngine.state.Exists("0"))
+	require.False(t, inst1.PullEngine.state.Exists("0"))
 }
 
 func TestPullEngine_Stop(t *testing.T) {
-	t.Parallel()
 	peers := make(map[string]*pullTestInstance)
 	inst1 := newPushPullTestInstance("p1", peers)
 	inst2 := newPushPullTestInstance("p2", peers)
@@ -200,11 +197,10 @@ func TestPullEngine_Stop(t *testing.T) {
 	inst1.stop()
 	time.Sleep(time.Duration(800) * time.Millisecond)
 	len2 := len(inst2.state.ToArray())
-	assert.Equal(t, len1, len2, "PullEngine was still active after Stop() was invoked!")
+	require.Equal(t, len1, len2, "PullEngine was still active after Stop() was invoked!")
 }
 
 func TestPullEngineAll2AllWithIncrementalSpawning(t *testing.T) {
-	t.Parallel()
 	// Scenario: spawn 10 nodes, each 50 ms after the other
 	// and have them transfer data between themselves.
 	// Expected outcome: obviously, everything should succeed.
@@ -225,12 +221,11 @@ func TestPullEngineAll2AllWithIncrementalSpawning(t *testing.T) {
 
 	for i := 0; i < instanceCount; i++ {
 		pID := fmt.Sprintf("p%d", i+1)
-		assert.Equal(t, instanceCount, len(peers[pID].state.ToArray()))
+		require.Equal(t, instanceCount, len(peers[pID].state.ToArray()))
 	}
 }
 
 func TestPullEngineSelectiveUpdates(t *testing.T) {
-	t.Parallel()
 	// Scenario: inst1 has {1, 3} and inst2 has {0,1,2,3}.
 	// inst1 initiates to inst2
 	// Expected outcome: inst1 asks for 0,2 and inst2 sends 0,2 only
@@ -246,43 +241,42 @@ func TestPullEngineSelectiveUpdates(t *testing.T) {
 	// Ensure inst2 sent a proper digest to inst1
 	inst1.hook(func(m interface{}) {
 		if dig, isDig := m.(*digestMsg); isDig {
-			assert.True(t, util.IndexInSlice(dig.digest, "0", Strcmp) != -1)
-			assert.True(t, util.IndexInSlice(dig.digest, "1", Strcmp) != -1)
-			assert.True(t, util.IndexInSlice(dig.digest, "2", Strcmp) != -1)
-			assert.True(t, util.IndexInSlice(dig.digest, "3", Strcmp) != -1)
+			require.True(t, util.IndexInSlice(dig.digest, "0", Strcmp) != -1)
+			require.True(t, util.IndexInSlice(dig.digest, "1", Strcmp) != -1)
+			require.True(t, util.IndexInSlice(dig.digest, "2", Strcmp) != -1)
+			require.True(t, util.IndexInSlice(dig.digest, "3", Strcmp) != -1)
 		}
 	})
 
 	// Ensure inst1 requested only needed updates from inst2
 	inst2.hook(func(m interface{}) {
 		if req, isReq := m.(*reqMsg); isReq {
-			assert.True(t, util.IndexInSlice(req.items, "1", Strcmp) == -1)
-			assert.True(t, util.IndexInSlice(req.items, "3", Strcmp) == -1)
+			require.True(t, util.IndexInSlice(req.items, "1", Strcmp) == -1)
+			require.True(t, util.IndexInSlice(req.items, "3", Strcmp) == -1)
 
-			assert.True(t, util.IndexInSlice(req.items, "0", Strcmp) != -1)
-			assert.True(t, util.IndexInSlice(req.items, "2", Strcmp) != -1)
+			require.True(t, util.IndexInSlice(req.items, "0", Strcmp) != -1)
+			require.True(t, util.IndexInSlice(req.items, "2", Strcmp) != -1)
 		}
 	})
 
 	// Ensure inst1 received only needed updates from inst2
 	inst1.hook(func(m interface{}) {
 		if res, isRes := m.(*resMsg); isRes {
-			assert.True(t, util.IndexInSlice(res.items, "1", Strcmp) == -1)
-			assert.True(t, util.IndexInSlice(res.items, "3", Strcmp) == -1)
+			require.True(t, util.IndexInSlice(res.items, "1", Strcmp) == -1)
+			require.True(t, util.IndexInSlice(res.items, "3", Strcmp) == -1)
 
-			assert.True(t, util.IndexInSlice(res.items, "0", Strcmp) != -1)
-			assert.True(t, util.IndexInSlice(res.items, "2", Strcmp) != -1)
+			require.True(t, util.IndexInSlice(res.items, "0", Strcmp) != -1)
+			require.True(t, util.IndexInSlice(res.items, "2", Strcmp) != -1)
 		}
 	})
 
 	inst1.setNextPeerSelection([]string{"p2"})
 
 	time.Sleep(time.Duration(2000) * time.Millisecond)
-	assert.Equal(t, len(inst2.state.ToArray()), len(inst1.state.ToArray()))
+	require.Equal(t, len(inst2.state.ToArray()), len(inst1.state.ToArray()))
 }
 
 func TestByzantineResponder(t *testing.T) {
-	t.Parallel()
 	// Scenario: inst1 sends hello to inst2 but inst3 is byzantine so it attempts to send a digest and a response to inst1.
 	// expected outcome is for inst1 not to process updates from inst3.
 	peers := make(map[string]*pullTestInstance)
@@ -318,7 +312,7 @@ func TestByzantineResponder(t *testing.T) {
 			// the response is from p3
 			if util.IndexInSlice(res.items, "6", Strcmp) != -1 {
 				// inst1 is currently accepting responses
-				assert.Equal(t, int32(1), atomic.LoadInt32(&(inst1.acceptingResponses)), "inst1 is not accepting digests")
+				require.Equal(t, int32(1), atomic.LoadInt32(&(inst1.acceptingResponses)), "inst1 is not accepting digests")
 			}
 		}
 	})
@@ -327,20 +321,19 @@ func TestByzantineResponder(t *testing.T) {
 
 	time.Sleep(time.Duration(1000) * time.Millisecond)
 
-	assert.Equal(t, int32(1), atomic.LoadInt32(&receivedDigestFromInst3), "inst1 hasn't received a digest from inst3")
+	require.Equal(t, int32(1), atomic.LoadInt32(&receivedDigestFromInst3), "inst1 hasn't received a digest from inst3")
 
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "1", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "2", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "3", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "1", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "2", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "3", Strcmp) != -1)
 
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "5", Strcmp) == -1)
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "6", Strcmp) == -1)
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "7", Strcmp) == -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "5", Strcmp) == -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "6", Strcmp) == -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "7", Strcmp) == -1)
 
 }
 
 func TestMultipleInitiators(t *testing.T) {
-	t.Parallel()
 	// Scenario: inst1, inst2 and inst3 both start protocol with inst4 at the same time.
 	// Expected outcome: inst4 successfully transfers state to all of them
 	peers := make(map[string]*pullTestInstance)
@@ -361,16 +354,15 @@ func TestMultipleInitiators(t *testing.T) {
 	time.Sleep(time.Duration(2000) * time.Millisecond)
 
 	for _, inst := range []*pullTestInstance{inst1, inst2, inst3} {
-		assert.True(t, util.IndexInSlice(inst.state.ToArray(), "1", Strcmp) != -1)
-		assert.True(t, util.IndexInSlice(inst.state.ToArray(), "2", Strcmp) != -1)
-		assert.True(t, util.IndexInSlice(inst.state.ToArray(), "3", Strcmp) != -1)
-		assert.True(t, util.IndexInSlice(inst.state.ToArray(), "4", Strcmp) != -1)
+		require.True(t, util.IndexInSlice(inst.state.ToArray(), "1", Strcmp) != -1)
+		require.True(t, util.IndexInSlice(inst.state.ToArray(), "2", Strcmp) != -1)
+		require.True(t, util.IndexInSlice(inst.state.ToArray(), "3", Strcmp) != -1)
+		require.True(t, util.IndexInSlice(inst.state.ToArray(), "4", Strcmp) != -1)
 	}
 
 }
 
 func TestLatePeers(t *testing.T) {
-	t.Parallel()
 	// Scenario: inst1 initiates to inst2 (items: {1,2,3,4}) and inst3 (items: {5,6,7,8}),
 	// but inst2 is too slow to respond, and all items
 	// should be received from inst3.
@@ -390,20 +382,19 @@ func TestLatePeers(t *testing.T) {
 
 	time.Sleep(time.Duration(2000) * time.Millisecond)
 
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "1", Strcmp) == -1)
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "2", Strcmp) == -1)
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "3", Strcmp) == -1)
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "4", Strcmp) == -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "1", Strcmp) == -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "2", Strcmp) == -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "3", Strcmp) == -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "4", Strcmp) == -1)
 
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "5", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "6", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "7", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "8", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "5", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "6", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "7", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "8", Strcmp) != -1)
 
 }
 
 func TestBiDiUpdates(t *testing.T) {
-	t.Parallel()
 	// Scenario: inst1 has {1, 3} and inst2 has {0,2} and both initiate to the other at the same time.
 	// Expected outcome: both have {0,1,2,3} in the end
 	peers := make(map[string]*pullTestInstance)
@@ -420,20 +411,19 @@ func TestBiDiUpdates(t *testing.T) {
 
 	time.Sleep(time.Duration(2000) * time.Millisecond)
 
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "0", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "1", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "2", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst1.state.ToArray(), "3", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "0", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "1", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "2", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst1.state.ToArray(), "3", Strcmp) != -1)
 
-	assert.True(t, util.IndexInSlice(inst2.state.ToArray(), "0", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst2.state.ToArray(), "1", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst2.state.ToArray(), "2", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst2.state.ToArray(), "3", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst2.state.ToArray(), "0", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst2.state.ToArray(), "1", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst2.state.ToArray(), "2", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst2.state.ToArray(), "3", Strcmp) != -1)
 
 }
 
 func TestSpread(t *testing.T) {
-	t.Parallel()
 	// Scenario: inst1 initiates to inst2, inst3 inst4 and each have items 0-100. inst5 also has the same items but isn't selected
 	// Expected outcome: each responder (inst2, inst3 and inst4) is chosen at least once (the probability for not choosing each of them is slim)
 	// inst5 isn't selected at all
@@ -486,16 +476,15 @@ func TestSpread(t *testing.T) {
 	lock.Lock()
 	for pI, counter := range chooseCounters {
 		if pI == "p5" {
-			assert.Equal(t, 0, counter)
+			require.Equal(t, 0, counter)
 		} else {
-			assert.True(t, counter > 0, "%s was not selected!", pI)
+			require.True(t, counter > 0, "%s was not selected!", pI)
 		}
 	}
 	lock.Unlock()
 }
 
 func TestFilter(t *testing.T) {
-	t.Parallel()
 	// Scenario: 3 instances, items [0-5] are found only in the first instance, the other 2 have none.
 	//           and also the first instance only gives the 2nd instance even items, and odd items to the 3rd.
 	//           also, instances 2 and 3 don't know each other.
@@ -524,19 +513,19 @@ func TestFilter(t *testing.T) {
 
 	time.Sleep(time.Second * 2)
 
-	assert.True(t, util.IndexInSlice(inst2.state.ToArray(), "0", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst2.state.ToArray(), "1", Strcmp) == -1)
-	assert.True(t, util.IndexInSlice(inst2.state.ToArray(), "2", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst2.state.ToArray(), "3", Strcmp) == -1)
-	assert.True(t, util.IndexInSlice(inst2.state.ToArray(), "4", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst2.state.ToArray(), "5", Strcmp) == -1)
+	require.True(t, util.IndexInSlice(inst2.state.ToArray(), "0", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst2.state.ToArray(), "1", Strcmp) == -1)
+	require.True(t, util.IndexInSlice(inst2.state.ToArray(), "2", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst2.state.ToArray(), "3", Strcmp) == -1)
+	require.True(t, util.IndexInSlice(inst2.state.ToArray(), "4", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst2.state.ToArray(), "5", Strcmp) == -1)
 
-	assert.True(t, util.IndexInSlice(inst3.state.ToArray(), "0", Strcmp) == -1)
-	assert.True(t, util.IndexInSlice(inst3.state.ToArray(), "1", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst3.state.ToArray(), "2", Strcmp) == -1)
-	assert.True(t, util.IndexInSlice(inst3.state.ToArray(), "3", Strcmp) != -1)
-	assert.True(t, util.IndexInSlice(inst3.state.ToArray(), "4", Strcmp) == -1)
-	assert.True(t, util.IndexInSlice(inst3.state.ToArray(), "5", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst3.state.ToArray(), "0", Strcmp) == -1)
+	require.True(t, util.IndexInSlice(inst3.state.ToArray(), "1", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst3.state.ToArray(), "2", Strcmp) == -1)
+	require.True(t, util.IndexInSlice(inst3.state.ToArray(), "3", Strcmp) != -1)
+	require.True(t, util.IndexInSlice(inst3.state.ToArray(), "4", Strcmp) == -1)
+	require.True(t, util.IndexInSlice(inst3.state.ToArray(), "5", Strcmp) != -1)
 
 }
 

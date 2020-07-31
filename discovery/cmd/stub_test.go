@@ -15,16 +15,16 @@ import (
 	"github.com/hyperledger/fabric/cmd/common"
 	"github.com/hyperledger/fabric/cmd/common/comm"
 	"github.com/hyperledger/fabric/cmd/common/signer"
-	corecomm "github.com/hyperledger/fabric/core/comm"
 	discovery "github.com/hyperledger/fabric/discovery/client"
-	"github.com/stretchr/testify/assert"
+	corecomm "github.com/hyperledger/fabric/internal/pkg/comm"
+	"github.com/stretchr/testify/require"
 )
 
 func TestClientStub(t *testing.T) {
 	srv, err := corecomm.NewGRPCServer("127.0.0.1:", corecomm.ServerConfig{
 		SecOpts: corecomm.SecureOptions{},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	go srv.Start()
 	defer srv.Stop()
 
@@ -42,14 +42,14 @@ func TestClientStub(t *testing.T) {
 		},
 		TLSConfig: comm.Config{},
 	}, req)
-	assert.Contains(t, err.Error(), "Unimplemented desc = unknown service discovery.Discovery")
+	require.Contains(t, err.Error(), "Unimplemented desc = unknown service discovery.Discovery")
 }
 
 func TestRawStub(t *testing.T) {
 	srv, err := corecomm.NewGRPCServer("127.0.0.1:", corecomm.ServerConfig{
 		SecOpts: corecomm.SecureOptions{},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	go srv.Start()
 	defer srv.Stop()
 
@@ -67,5 +67,5 @@ func TestRawStub(t *testing.T) {
 		},
 		TLSConfig: comm.Config{},
 	}, req)
-	assert.Contains(t, err.Error(), "Unimplemented desc = unknown service discovery.Discovery")
+	require.Contains(t, err.Error(), "Unimplemented desc = unknown service discovery.Discovery")
 }

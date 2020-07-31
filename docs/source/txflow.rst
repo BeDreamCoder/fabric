@@ -16,7 +16,7 @@ received back necessary cryptographic material, which is used to authenticate to
 the network.
 
 The chaincode (containing a set of key value pairs representing the initial
-state of the radish market) is installed on the peers and instantiated on the
+state of the radish market) is installed on the peers and deployed to the
 channel. The chaincode contains logic defining a set of transaction instructions
 and the agreed upon price for a radish. An endorsement policy has also been set
 for this chaincode, stating that both ``peerA`` and ``peerB`` must endorse any
@@ -122,8 +122,10 @@ transaction was validated or invalidated.
           whether your transaction has actually been ordered, validated, and
           committed to the ledger.
 
-See the :ref:`sequence diagram <swimlane>` to better understand the
-transaction flow.
+You can also use the swimlane sequence diagram below to examine the
+transaction flow in more detail.
+
+.. image:: images/flow-4.png
 
 .. Licensed under Creative Commons Attribution 4.0 International License
-https://creativecommons.org/licenses/by/4.0/
+   https://creativecommons.org/licenses/by/4.0/

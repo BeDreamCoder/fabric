@@ -11,67 +11,78 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"os"
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/common/ledger/testutil"
 	"github.com/hyperledger/fabric/core/common/ccprovider"
 	"github.com/hyperledger/fabric/core/ledger/cceventmgmt"
+	"github.com/hyperledger/fabric/core/ledger/internal/version"
+	testmock "github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/privacyenabledstate/mock"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
-	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version"
+	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb/statecouchdb"
+	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb/stateleveldb"
+	"github.com/hyperledger/fabric/core/ledger/mock"
 	"github.com/hyperledger/fabric/core/ledger/util"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestMain(m *testing.M) {
-	exitCode := m.Run()
-	for _, testEnv := range testEnvs {
-		testEnv.Cleanup()
+func TestHealthCheckRegister(t *testing.T) {
+	fakeHealthCheckRegistry := &mock.HealthCheckRegistry{}
+	dbProvider := &DBProvider{
+		VersionedDBProvider: &stateleveldb.VersionedDBProvider{},
+		HealthCheckRegistry: fakeHealthCheckRegistry,
 	}
-	os.Exit(exitCode)
+
+	err := dbProvider.RegisterHealthChecker()
+	require.NoError(t, err)
+	require.Equal(t, 0, fakeHealthCheckRegistry.RegisterCheckerCallCount())
+
+	dbProvider.VersionedDBProvider = &statecouchdb.VersionedDBProvider{}
+	err = dbProvider.RegisterHealthChecker()
+	require.NoError(t, err)
+	require.Equal(t, 1, fakeHealthCheckRegistry.RegisterCheckerCallCount())
+
+	arg1, arg2 := fakeHealthCheckRegistry.RegisterCheckerArgsForCall(0)
+	require.Equal(t, "couchdb", arg1)
+	require.NotNil(t, arg2)
 }
 
-func TestBatch(t *testing.T) {
-	batch := UpdateMap(make(map[string]nsBatch))
-	v := version.NewHeight(1, 1)
-	for i := 0; i < 5; i++ {
-		for j := 0; j < 5; j++ {
-			for k := 0; k < 5; k++ {
-				batch.Put(fmt.Sprintf("ns-%d", i), fmt.Sprintf("collection-%d", j), fmt.Sprintf("key-%d", k),
-					[]byte(fmt.Sprintf("value-%d-%d-%d", i, j, k)), v)
-			}
-		}
+func TestGetIndexInfo(t *testing.T) {
+	chaincodeIndexPath := "META-INF/statedb/couchdb/indexes/indexColorSortName.json"
+	actualIndexInfo := getIndexInfo(chaincodeIndexPath)
+	expectedIndexInfo := &indexInfo{
+		hasIndexForChaincode:  true,
+		hasIndexForCollection: false,
+		collectionName:        "",
 	}
-	for i := 0; i < 5; i++ {
-		for j := 0; j < 5; j++ {
-			for k := 0; k < 5; k++ {
-				vv := batch.Get(fmt.Sprintf("ns-%d", i), fmt.Sprintf("collection-%d", j), fmt.Sprintf("key-%d", k))
-				assert.NotNil(t, vv)
-				assert.Equal(t,
-					&statedb.VersionedValue{Value: []byte(fmt.Sprintf("value-%d-%d-%d", i, j, k)), Version: v},
-					vv)
-			}
-		}
+	require.Equal(t, expectedIndexInfo, actualIndexInfo)
+
+	collectionIndexPath := "META-INF/statedb/couchdb/collections/collectionMarbles/indexes/indexCollMarbles.json"
+	actualIndexInfo = getIndexInfo(collectionIndexPath)
+	expectedIndexInfo = &indexInfo{
+		hasIndexForChaincode:  false,
+		hasIndexForCollection: true,
+		collectionName:        "collectionMarbles",
 	}
-	assert.Nil(t, batch.Get("ns-1", "collection-1", "key-5"))
-	assert.Nil(t, batch.Get("ns-1", "collection-5", "key-1"))
-	assert.Nil(t, batch.Get("ns-5", "collection-1", "key-1"))
-}
+	require.Equal(t, expectedIndexInfo, actualIndexInfo)
 
-func TestHashBatchContains(t *testing.T) {
-	batch := NewHashedUpdateBatch()
-	batch.Put("ns1", "coll1", []byte("key1"), []byte("val1"), version.NewHeight(1, 1))
-	assert.True(t, batch.Contains("ns1", "coll1", []byte("key1")))
-	assert.False(t, batch.Contains("ns1", "coll1", []byte("key2")))
-	assert.False(t, batch.Contains("ns1", "coll2", []byte("key1")))
-	assert.False(t, batch.Contains("ns2", "coll1", []byte("key1")))
+	incorrectChaincodeIndexPath := "META-INF/statedb/couchdb/indexColorSortName.json"
+	actualIndexInfo = getIndexInfo(incorrectChaincodeIndexPath)
+	expectedIndexInfo = &indexInfo{
+		hasIndexForChaincode:  false,
+		hasIndexForCollection: false,
+		collectionName:        "",
+	}
+	require.Equal(t, expectedIndexInfo, actualIndexInfo)
 
-	batch.Delete("ns1", "coll1", []byte("deleteKey"), version.NewHeight(1, 1))
-	assert.True(t, batch.Contains("ns1", "coll1", []byte("deleteKey")))
-	assert.False(t, batch.Contains("ns1", "coll1", []byte("deleteKey1")))
-	assert.False(t, batch.Contains("ns1", "coll2", []byte("deleteKey")))
-	assert.False(t, batch.Contains("ns2", "coll1", []byte("deleteKey")))
+	incorrectCollectionIndexPath := "META-INF/statedb/couchdb/collections/indexes/indexCollMarbles.json"
+	actualIndexInfo = getIndexInfo(incorrectCollectionIndexPath)
+	require.Equal(t, expectedIndexInfo, actualIndexInfo)
+
+	incorrectIndexPath := "META-INF/statedb/"
+	actualIndexInfo = getIndexInfo(incorrectIndexPath)
+	require.Equal(t, expectedIndexInfo, actualIndexInfo)
 }
 
 func TestDB(t *testing.T) {
@@ -84,6 +95,7 @@ func TestDB(t *testing.T) {
 
 func testDB(t *testing.T, env TestEnv) {
 	env.Init(t)
+	defer env.Cleanup()
 	db := env.GetDBHandle(generateLedgerID(t))
 
 	updates := NewUpdateBatch()
@@ -95,48 +107,48 @@ func testDB(t *testing.T, env TestEnv) {
 	putPvtUpdates(t, updates, "ns1", "coll1", "key1", []byte("pvt_value1"), version.NewHeight(1, 4))
 	putPvtUpdates(t, updates, "ns1", "coll1", "key2", []byte("pvt_value2"), version.NewHeight(1, 5))
 	putPvtUpdates(t, updates, "ns2", "coll1", "key3", []byte("pvt_value3"), version.NewHeight(1, 6))
-	db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(2, 6))
-	commonStorageDB := db.(*CommonStorageDB)
-	bulkOptimizable, ok := commonStorageDB.VersionedDB.(statedb.BulkOptimizable)
+	require.NoError(t, db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(2, 6)))
+	bulkOptimizable, ok := db.VersionedDB.(statedb.BulkOptimizable)
 	if ok {
 		bulkOptimizable.ClearCachedVersions()
 	}
 
 	vv, err := db.GetState("ns1", "key1")
-	assert.NoError(t, err)
-	assert.Equal(t, &statedb.VersionedValue{Value: []byte("value1"), Version: version.NewHeight(1, 1)}, vv)
+	require.NoError(t, err)
+	require.Equal(t, &statedb.VersionedValue{Value: []byte("value1"), Version: version.NewHeight(1, 1)}, vv)
 
 	vv, err = db.GetPrivateData("ns1", "coll1", "key1")
-	assert.NoError(t, err)
-	assert.Equal(t, &statedb.VersionedValue{Value: []byte("pvt_value1"), Version: version.NewHeight(1, 4)}, vv)
+	require.NoError(t, err)
+	require.Equal(t, &statedb.VersionedValue{Value: []byte("pvt_value1"), Version: version.NewHeight(1, 4)}, vv)
 
 	vv, err = db.GetPrivateDataHash("ns1", "coll1", "key1")
-	assert.NoError(t, err)
-	assert.Equal(t, &statedb.VersionedValue{Value: util.ComputeStringHash("pvt_value1"), Version: version.NewHeight(1, 4)}, vv)
+	require.NoError(t, err)
+	require.Equal(t, &statedb.VersionedValue{Value: util.ComputeStringHash("pvt_value1"), Version: version.NewHeight(1, 4)}, vv)
 
 	vv, err = db.GetValueHash("ns1", "coll1", util.ComputeStringHash("key1"))
-	assert.NoError(t, err)
-	assert.Equal(t, &statedb.VersionedValue{Value: util.ComputeStringHash("pvt_value1"), Version: version.NewHeight(1, 4)}, vv)
+	require.NoError(t, err)
+	require.Equal(t, &statedb.VersionedValue{Value: util.ComputeStringHash("pvt_value1"), Version: version.NewHeight(1, 4)}, vv)
 
 	committedVersion, err := db.GetKeyHashVersion("ns1", "coll1", util.ComputeStringHash("key1"))
-	assert.NoError(t, err)
-	assert.Equal(t, version.NewHeight(1, 4), committedVersion)
+	require.NoError(t, err)
+	require.Equal(t, version.NewHeight(1, 4), committedVersion)
 
 	updates = NewUpdateBatch()
 	updates.PubUpdates.Delete("ns1", "key1", version.NewHeight(2, 7))
 	deletePvtUpdates(t, updates, "ns1", "coll1", "key1", version.NewHeight(2, 7))
-	db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(2, 7))
+	require.NoError(t, db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(2, 7)))
 
 	vv, err = db.GetState("ns1", "key1")
-	assert.NoError(t, err)
-	assert.Nil(t, vv)
+	require.NoError(t, err)
+	require.Nil(t, vv)
 
 	vv, err = db.GetPrivateData("ns1", "coll1", "key1")
-	assert.NoError(t, err)
-	assert.Nil(t, vv)
+	require.NoError(t, err)
+	require.Nil(t, vv)
 
 	vv, err = db.GetValueHash("ns1", "coll1", util.ComputeStringHash("key1"))
-	assert.Nil(t, vv)
+	require.NoError(t, err)
+	require.Nil(t, vv)
 }
 
 func TestGetStateMultipleKeys(t *testing.T) {
@@ -149,6 +161,7 @@ func TestGetStateMultipleKeys(t *testing.T) {
 
 func testGetStateMultipleKeys(t *testing.T, env TestEnv) {
 	env.Init(t)
+	defer env.Cleanup()
 	db := env.GetDBHandle(generateLedgerID(t))
 
 	updates := NewUpdateBatch()
@@ -160,11 +173,11 @@ func testGetStateMultipleKeys(t *testing.T, env TestEnv) {
 	putPvtUpdates(t, updates, "ns1", "coll1", "key1", []byte("pvt_value1"), version.NewHeight(1, 4))
 	putPvtUpdates(t, updates, "ns1", "coll1", "key2", []byte("pvt_value2"), version.NewHeight(1, 5))
 	putPvtUpdates(t, updates, "ns1", "coll1", "key3", []byte("pvt_value3"), version.NewHeight(1, 6))
-	db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(2, 6))
+	require.NoError(t, db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(2, 6)))
 
 	versionedVals, err := db.GetStateMultipleKeys("ns1", []string{"key1", "key3"})
-	assert.NoError(t, err)
-	assert.Equal(t,
+	require.NoError(t, err)
+	require.Equal(t,
 		[]*statedb.VersionedValue{
 			{Value: []byte("value1"), Version: version.NewHeight(1, 1)},
 			{Value: []byte("value3"), Version: version.NewHeight(1, 3)},
@@ -172,8 +185,8 @@ func testGetStateMultipleKeys(t *testing.T, env TestEnv) {
 		versionedVals)
 
 	pvtVersionedVals, err := db.GetPrivateDataMultipleKeys("ns1", "coll1", []string{"key1", "key3"})
-	assert.NoError(t, err)
-	assert.Equal(t,
+	require.NoError(t, err)
+	require.Equal(t,
 		[]*statedb.VersionedValue{
 			{Value: []byte("pvt_value1"), Version: version.NewHeight(1, 4)},
 			{Value: []byte("pvt_value3"), Version: version.NewHeight(1, 6)},
@@ -191,6 +204,7 @@ func TestGetStateRangeScanIterator(t *testing.T) {
 
 func testGetStateRangeScanIterator(t *testing.T, env TestEnv) {
 	env.Init(t)
+	defer env.Cleanup()
 	db := env.GetDBHandle(generateLedgerID(t))
 
 	updates := NewUpdateBatch()
@@ -210,7 +224,7 @@ func testGetStateRangeScanIterator(t *testing.T, env TestEnv) {
 	putPvtUpdates(t, updates, "ns2", "coll1", "key5", []byte("pvt_value5"), version.NewHeight(1, 5))
 	putPvtUpdates(t, updates, "ns2", "coll1", "key6", []byte("pvt_value6"), version.NewHeight(1, 6))
 	putPvtUpdates(t, updates, "ns3", "coll1", "key7", []byte("pvt_value7"), version.NewHeight(1, 7))
-	db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(2, 7))
+	require.NoError(t, db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(2, 7)))
 
 	itr1, _ := db.GetStateRangeScanIterator("ns1", "key1", "")
 	testItr(t, itr1, []string{"key1", "key2", "key3", "key4"})
@@ -239,7 +253,7 @@ func testGetStateRangeScanIterator(t *testing.T, env TestEnv) {
 
 func TestQueryOnCouchDB(t *testing.T) {
 	for _, env := range testEnvs {
-		_, ok := env.(*CouchDBCommonStorageTestEnv)
+		_, ok := env.(*CouchDBTestEnv)
 		if !ok {
 			continue
 		}
@@ -251,6 +265,7 @@ func TestQueryOnCouchDB(t *testing.T) {
 
 func testQueryOnCouchDB(t *testing.T, env TestEnv) {
 	env.Init(t)
+	defer env.Cleanup()
 	db := env.GetDBHandle(generateLedgerID(t))
 	updates := NewUpdateBatch()
 
@@ -274,52 +289,52 @@ func testQueryOnCouchDB(t *testing.T, env TestEnv) {
 		putPvtUpdates(t, updates, "ns1", "coll1", testKey(i), []byte(jsonValue), version.NewHeight(1, uint64(i)))
 		putPvtUpdates(t, updates, "ns2", "coll1", testKey(i), []byte(jsonValue), version.NewHeight(1, uint64(i)))
 	}
-	db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(1, 11))
+	require.NoError(t, db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(1, 11)))
 
 	// query for owner=jerry, use namespace "ns1"
 	itr, err := db.ExecuteQuery("ns1", `{"selector":{"owner":"jerry"}}`)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	testQueryItr(t, itr, []string{testKey(1)}, []string{"jerry"})
 
 	// query for owner=jerry, use namespace "ns2"
 	itr, err = db.ExecuteQuery("ns2", `{"selector":{"owner":"jerry"}}`)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	testQueryItr(t, itr, []string{testKey(1)}, []string{"jerry"})
 
 	// query for pvt data owner=jerry, use namespace "ns1"
 	itr, err = db.ExecuteQueryOnPrivateData("ns1", "coll1", `{"selector":{"owner":"jerry"}}`)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	testQueryItr(t, itr, []string{testKey(1)}, []string{"jerry"})
 
 	// query for pvt data owner=jerry, use namespace "ns2"
 	itr, err = db.ExecuteQueryOnPrivateData("ns2", "coll1", `{"selector":{"owner":"jerry"}}`)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	testQueryItr(t, itr, []string{testKey(1)}, []string{"jerry"})
 
 	// query using bad query string
-	itr, err = db.ExecuteQueryOnPrivateData("ns1", "coll1", "this is an invalid query string")
-	assert.Error(t, err, "Should have received an error for invalid query string")
+	_, err = db.ExecuteQueryOnPrivateData("ns1", "coll1", "this is an invalid query string")
+	require.Error(t, err, "Should have received an error for invalid query string")
 
 	// query returns 0 records
 	itr, err = db.ExecuteQueryOnPrivateData("ns1", "coll1", `{"selector":{"owner":"not_a_valid_name"}}`)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	testQueryItr(t, itr, []string{}, []string{})
 
 	// query with embedded implicit "AND" and explicit "OR", namespace "ns1"
 	itr, err = db.ExecuteQueryOnPrivateData("ns1", "coll1", `{"selector":{"color":"green","$or":[{"owner":"fred"},{"owner":"mary"}]}}`)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	testQueryItr(t, itr, []string{testKey(8), testKey(9)}, []string{"green"}, []string{"green"})
 
 	// query with integer with digit-count equals 7 and response received is also received
 	// with same digit-count and there is no float transformation
 	itr, err = db.ExecuteQueryOnPrivateData("ns2", "coll1", `{"selector":{"$and":[{"size":{"$eq": 1000007}}]}}`)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	testQueryItr(t, itr, []string{testKey(10)}, []string{"joe", "1000007"})
 }
 
 func TestLongDBNameOnCouchDB(t *testing.T) {
 	for _, env := range testEnvs {
-		_, ok := env.(*CouchDBCommonStorageTestEnv)
+		_, ok := env.(*CouchDBTestEnv)
 		if !ok {
 			continue
 		}
@@ -331,6 +346,7 @@ func TestLongDBNameOnCouchDB(t *testing.T) {
 
 func testLongDBNameOnCouchDB(t *testing.T, env TestEnv) {
 	env.Init(t)
+	defer env.Cleanup()
 
 	// Creates metadataDB (i.e., chainDB)
 	// Allowed pattern for chainName: [a-z][a-z0-9.-]
@@ -346,15 +362,15 @@ func testLongDBNameOnCouchDB(t *testing.T, env TestEnv) {
 	updates.PvtUpdates.Put(ns, coll, "key1", []byte("pvt_value"), version.NewHeight(1, 2))
 	updates.HashUpdates.Put(ns, coll, util.ComputeStringHash("key1"), util.ComputeHash([]byte("pvt_value")), version.NewHeight(1, 2))
 
-	db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(2, 6))
+	require.NoError(t, db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(2, 6)))
 
 	vv, err := db.GetState(ns, "key1")
-	assert.NoError(t, err)
-	assert.Equal(t, &statedb.VersionedValue{Value: []byte("value1"), Version: version.NewHeight(1, 1)}, vv)
+	require.NoError(t, err)
+	require.Equal(t, &statedb.VersionedValue{Value: []byte("value1"), Version: version.NewHeight(1, 1)}, vv)
 
 	vv, err = db.GetPrivateData(ns, coll, "key1")
-	assert.NoError(t, err)
-	assert.Equal(t, &statedb.VersionedValue{Value: []byte("pvt_value"), Version: version.NewHeight(1, 2)}, vv)
+	require.NoError(t, err)
+	require.Equal(t, &statedb.VersionedValue{Value: []byte("pvt_value"), Version: version.NewHeight(1, 2)}, vv)
 }
 
 func testItr(t *testing.T, itr statedb.ResultsIterator, expectedKeys []string) {
@@ -363,11 +379,11 @@ func testItr(t *testing.T, itr statedb.ResultsIterator, expectedKeys []string) {
 		queryResult, _ := itr.Next()
 		vkv := queryResult.(*statedb.VersionedKV)
 		key := vkv.Key
-		assert.Equal(t, expectedKey, key)
+		require.Equal(t, expectedKey, key)
 	}
 	last, err := itr.Next()
-	assert.NoError(t, err)
-	assert.Nil(t, last)
+	require.NoError(t, err)
+	require.Nil(t, last)
 }
 
 func testQueryItr(t *testing.T, itr statedb.ResultsIterator, expectedKeys []string, expectedValStrs ...[]string) {
@@ -377,45 +393,23 @@ func testQueryItr(t *testing.T, itr statedb.ResultsIterator, expectedKeys []stri
 		vkv := queryResult.(*statedb.VersionedKV)
 		key := vkv.Key
 		valStr := string(vkv.Value)
-		assert.Equal(t, expectedKey, key)
+		require.Equal(t, expectedKey, key)
 		for _, expectedValStr := range expectedValStrs[i] {
-			assert.Contains(t, valStr, expectedValStr)
+			require.Contains(t, valStr, expectedValStr)
 		}
 	}
 	last, err := itr.Next()
-	assert.NoError(t, err)
-	assert.Nil(t, last)
+	require.NoError(t, err)
+	require.Nil(t, last)
 }
 
 func testKey(i int) string {
 	return fmt.Sprintf("key%d", i)
 }
 
-func TestCompositeKeyMap(t *testing.T) {
-	b := NewPvtUpdateBatch()
-	b.Put("ns1", "coll1", "key1", []byte("testVal1"), nil)
-	b.Delete("ns1", "coll2", "key2", nil)
-	b.Put("ns2", "coll1", "key1", []byte("testVal3"), nil)
-	b.Put("ns2", "coll2", "key2", []byte("testVal4"), nil)
-	m := b.ToCompositeKeyMap()
-	assert.Len(t, m, 4)
-	vv, ok := m[PvtdataCompositeKey{"ns1", "coll1", "key1"}]
-	assert.True(t, ok)
-	assert.Equal(t, []byte("testVal1"), vv.Value)
-	vv, ok = m[PvtdataCompositeKey{"ns1", "coll2", "key2"}]
-	assert.Nil(t, vv.Value)
-	assert.True(t, ok)
-	_, ok = m[PvtdataCompositeKey{"ns2", "coll1", "key1"}]
-	assert.True(t, ok)
-	_, ok = m[PvtdataCompositeKey{"ns2", "coll2", "key2"}]
-	assert.True(t, ok)
-	_, ok = m[PvtdataCompositeKey{"ns2", "coll1", "key8888"}]
-	assert.False(t, ok)
-}
-
 func TestHandleChainCodeDeployOnCouchDB(t *testing.T) {
 	for _, env := range testEnvs {
-		_, ok := env.(*CouchDBCommonStorageTestEnv)
+		_, ok := env.(*CouchDBTestEnv)
 		if !ok {
 			continue
 		}
@@ -441,13 +435,12 @@ func createCollectionConfig(collectionName string) *peer.CollectionConfig {
 
 func testHandleChainCodeDeploy(t *testing.T, env TestEnv) {
 	env.Init(t)
+	defer env.Cleanup()
 	db := env.GetDBHandle(generateLedgerID(t))
 
 	coll1 := createCollectionConfig("collectionMarbles")
 	ccp := &peer.CollectionConfigPackage{Config: []*peer.CollectionConfig{coll1}}
 	chaincodeDef := &cceventmgmt.ChaincodeDefinition{Name: "ns1", Hash: nil, Version: "", CollectionConfigs: ccp}
-
-	commonStorageDB := db.(*CommonStorageDB)
 
 	// Test indexes for side databases
 	dbArtifactsTarBytes := testutil.CreateTarBytesForTest(
@@ -461,26 +454,26 @@ func testHandleChainCodeDeploy(t *testing.T, env TestEnv) {
 
 	// Test the retrieveIndexArtifacts method
 	fileEntries, err := ccprovider.ExtractFileEntries(dbArtifactsTarBytes, "couchdb")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// There should be 3 entries
-	assert.Len(t, fileEntries, 3)
+	require.Len(t, fileEntries, 3)
 
 	// There should be 2 entries for main
-	assert.Len(t, fileEntries["META-INF/statedb/couchdb/indexes"], 2)
+	require.Len(t, fileEntries["META-INF/statedb/couchdb/indexes"], 2)
 
 	// There should be 1 entry for collectionMarbles
-	assert.Len(t, fileEntries["META-INF/statedb/couchdb/collections/collectionMarbles/indexes"], 1)
+	require.Len(t, fileEntries["META-INF/statedb/couchdb/collections/collectionMarbles/indexes"], 1)
 
 	// Verify the content of the array item
 	expectedJSON := []byte(`{"index":{"fields":["docType","owner"]},"ddoc":"indexCollectionMarbles", "name":"indexCollectionMarbles","type":"json"}`)
 	actualJSON := fileEntries["META-INF/statedb/couchdb/collections/collectionMarbles/indexes"][0].FileContent
-	assert.Equal(t, expectedJSON, actualJSON)
+	require.Equal(t, expectedJSON, actualJSON)
 
 	// The collection config is added to the chaincodeDef but missing collectionMarblesPrivateDetails.
 	// Hence, the index on collectionMarblesPrivateDetails cannot be created
-	err = commonStorageDB.HandleChaincodeDeploy(chaincodeDef, dbArtifactsTarBytes)
-	assert.NoError(t, err)
+	err = db.HandleChaincodeDeploy(chaincodeDef, dbArtifactsTarBytes)
+	require.NoError(t, err)
 
 	coll2 := createCollectionConfig("collectionMarblesPrivateDetails")
 	ccp = &peer.CollectionConfigPackage{Config: []*peer.CollectionConfig{coll1, coll2}}
@@ -490,8 +483,8 @@ func testHandleChainCodeDeploy(t *testing.T, env TestEnv) {
 	// including collectionMarblesPrivateDetails which was missing earlier.
 	// Hence, the existing indexes must be updated and the new index must be created for
 	// collectionMarblesPrivateDetails
-	err = commonStorageDB.HandleChaincodeDeploy(chaincodeDef, dbArtifactsTarBytes)
-	assert.NoError(t, err)
+	err = db.HandleChaincodeDeploy(chaincodeDef, dbArtifactsTarBytes)
+	require.NoError(t, err)
 
 	chaincodeDef = &cceventmgmt.ChaincodeDefinition{Name: "ns1", Hash: nil, Version: "", CollectionConfigs: nil}
 
@@ -499,20 +492,20 @@ func testHandleChainCodeDeploy(t *testing.T, env TestEnv) {
 	// process reads the collection config from state db. However, the state db does not contain
 	// any collection config for this chaincode. Hence, index creation/update on all collections
 	// should fail
-	err = commonStorageDB.HandleChaincodeDeploy(chaincodeDef, dbArtifactsTarBytes)
-	assert.NoError(t, err)
+	err = db.HandleChaincodeDeploy(chaincodeDef, dbArtifactsTarBytes)
+	require.NoError(t, err)
 
 	//Test HandleChaincodeDefinition with a nil tar file
-	err = commonStorageDB.HandleChaincodeDeploy(chaincodeDef, nil)
-	assert.NoError(t, err)
+	err = db.HandleChaincodeDeploy(chaincodeDef, nil)
+	require.NoError(t, err)
 
 	//Test HandleChaincodeDefinition with a bad tar file
-	err = commonStorageDB.HandleChaincodeDeploy(chaincodeDef, []byte(`This is a really bad tar file`))
-	assert.NoError(t, err, "Error should not have been thrown for a bad tar file")
+	err = db.HandleChaincodeDeploy(chaincodeDef, []byte(`This is a really bad tar file`))
+	require.NoError(t, err, "Error should not have been thrown for a bad tar file")
 
 	//Test HandleChaincodeDefinition with a nil chaincodeDef
-	err = commonStorageDB.HandleChaincodeDeploy(nil, dbArtifactsTarBytes)
-	assert.Error(t, err, "Error should have been thrown for a nil chaincodeDefinition")
+	err = db.HandleChaincodeDeploy(nil, dbArtifactsTarBytes)
+	require.Error(t, err, "Error should have been thrown for a nil chaincodeDefinition")
 
 	// Create a tar file for test with 2 index definitions - one of them being errorneous
 	badSyntaxFileContent := `{"index":{"fields": This is a bad json}`
@@ -525,13 +518,13 @@ func testHandleChainCodeDeploy(t *testing.T, env TestEnv) {
 
 	// Test the retrieveIndexArtifacts method
 	fileEntries, err = ccprovider.ExtractFileEntries(dbArtifactsTarBytes, "couchdb")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// There should be 1 entry
-	assert.Len(t, fileEntries, 1)
+	require.Len(t, fileEntries, 1)
 
-	err = commonStorageDB.HandleChaincodeDeploy(chaincodeDef, dbArtifactsTarBytes)
-	assert.NoError(t, err)
+	err = db.HandleChaincodeDeploy(chaincodeDef, dbArtifactsTarBytes)
+	require.NoError(t, err)
 
 }
 
@@ -545,6 +538,7 @@ func TestMetadataRetrieval(t *testing.T) {
 
 func testMetadataRetrieval(t *testing.T, env TestEnv) {
 	env.Init(t)
+	defer env.Cleanup()
 	db := env.GetDBHandle(generateLedgerID(t))
 
 	updates := NewUpdateBatch()
@@ -555,21 +549,21 @@ func testMetadataRetrieval(t *testing.T, env TestEnv) {
 	putPvtUpdatesWithMetadata(t, updates, "ns1", "coll1", "key1", []byte("pvt_value1"), []byte("metadata1"), version.NewHeight(1, 4))
 	putPvtUpdatesWithMetadata(t, updates, "ns1", "coll1", "key2", []byte("pvt_value2"), nil, version.NewHeight(1, 5))
 	putPvtUpdatesWithMetadata(t, updates, "ns2", "coll1", "key3", []byte("pvt_value3"), nil, version.NewHeight(1, 6))
-	db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(2, 6))
+	require.NoError(t, db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(2, 6)))
 
 	vm, _ := db.GetStateMetadata("ns1", "key1")
-	assert.Equal(t, vm, []byte("metadata1"))
+	require.Equal(t, vm, []byte("metadata1"))
 	vm, _ = db.GetStateMetadata("ns1", "key2")
-	assert.Nil(t, vm)
+	require.Nil(t, vm)
 	vm, _ = db.GetStateMetadata("ns2", "key3")
-	assert.Nil(t, vm)
+	require.Nil(t, vm)
 
 	vm, _ = db.GetPrivateDataMetadataByHash("ns1", "coll1", util.ComputeStringHash("key1"))
-	assert.Equal(t, vm, []byte("metadata1"))
+	require.Equal(t, vm, []byte("metadata1"))
 	vm, _ = db.GetPrivateDataMetadataByHash("ns1", "coll1", util.ComputeStringHash("key2"))
-	assert.Nil(t, vm)
+	require.Nil(t, vm)
 	vm, _ = db.GetPrivateDataMetadataByHash("ns2", "coll1", util.ComputeStringHash("key3"))
-	assert.Nil(t, vm)
+	require.Nil(t, vm)
 }
 
 func putPvtUpdates(t *testing.T, updates *UpdateBatch, ns, coll, key string, value []byte, ver *version.Height) {
@@ -590,6 +584,103 @@ func deletePvtUpdates(t *testing.T, updates *UpdateBatch, ns, coll, key string, 
 func generateLedgerID(t *testing.T) string {
 	bytes := make([]byte, 8)
 	_, err := io.ReadFull(rand.Reader, bytes)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	return fmt.Sprintf("x%s", hex.EncodeToString(bytes))
+}
+
+func TestDrop(t *testing.T) {
+	for _, env := range testEnvs {
+		t.Run(env.GetName(), func(t *testing.T) {
+			testDrop(t, env)
+		})
+
+		t.Run("test-drop-error-propagation", func(t *testing.T) {
+			env.Init(t)
+			defer env.Cleanup()
+			ledgerid := generateLedgerID(t)
+			env.GetDBHandle(ledgerid)
+			env.GetProvider().Close()
+			require.EqualError(t, env.GetProvider().Drop(ledgerid), "internal leveldb error while obtaining db iterator: leveldb: closed")
+		})
+	}
+}
+
+func testDrop(t *testing.T, env TestEnv) {
+	env.Init(t)
+	defer env.Cleanup()
+	ledgerid := generateLedgerID(t)
+	db := env.GetDBHandle(ledgerid)
+
+	updates := NewUpdateBatch()
+	updates.PubUpdates.Put("ns1", "key1", []byte("value1"), version.NewHeight(1, 1))
+	putPvtUpdates(t, updates, "ns1", "coll1", "key1", []byte("pvt_value1"), version.NewHeight(1, 2))
+	require.NoError(t, db.ApplyPrivacyAwareUpdates(updates, version.NewHeight(2, 2)))
+
+	vv, err := db.GetState("ns1", "key1")
+	require.NoError(t, err)
+	require.Equal(t, &statedb.VersionedValue{Value: []byte("value1"), Version: version.NewHeight(1, 1)}, vv)
+
+	vv, err = db.GetPrivateData("ns1", "coll1", "key1")
+	require.NoError(t, err)
+	require.Equal(t, &statedb.VersionedValue{Value: []byte("pvt_value1"), Version: version.NewHeight(1, 2)}, vv)
+
+	vv, err = db.GetPrivateDataHash("ns1", "coll1", "key1")
+	require.NoError(t, err)
+	require.Equal(t, &statedb.VersionedValue{Value: util.ComputeStringHash("pvt_value1"), Version: version.NewHeight(1, 2)}, vv)
+
+	require.NoError(t, env.GetProvider().Drop(ledgerid))
+
+	vv, err = db.GetState("ns1", "key1")
+	require.NoError(t, err)
+	require.Nil(t, vv)
+
+	vv, err = db.GetPrivateData("ns1", "coll1", "key1")
+	require.NoError(t, err)
+	require.Nil(t, vv)
+
+	vv, err = db.GetPrivateDataHash("ns1", "coll1", "key1")
+	require.NoError(t, err)
+	require.Nil(t, vv)
+}
+
+//go:generate counterfeiter -o mock/channelinfo_provider.go -fake-name ChannelInfoProvider . channelInfoProvider
+
+func TestPossibleNamespaces(t *testing.T) {
+	namespacesAndCollections := map[string][]string{
+		"cc1":        {"_implicit_org_Org1MSP", "_implicit_org_Org2MSP", "collectionA", "collectionB"},
+		"cc2":        {"_implicit_org_Org1MSP", "_implicit_org_Org2MSP"},
+		"_lifecycle": {"_implicit_org_Org1MSP", "_implicit_org_Org2MSP"},
+		"lscc":       {},
+		"":           {},
+	}
+	expectedNamespaces := []string{
+		"cc1",
+		"cc1$$p_implicit_org_Org1MSP",
+		"cc1$$h_implicit_org_Org1MSP",
+		"cc1$$p_implicit_org_Org2MSP",
+		"cc1$$h_implicit_org_Org2MSP",
+		"cc1$$pcollectionA",
+		"cc1$$hcollectionA",
+		"cc1$$pcollectionB",
+		"cc1$$hcollectionB",
+		"cc2",
+		"cc2$$p_implicit_org_Org1MSP",
+		"cc2$$h_implicit_org_Org1MSP",
+		"cc2$$p_implicit_org_Org2MSP",
+		"cc2$$h_implicit_org_Org2MSP",
+		"_lifecycle",
+		"_lifecycle$$p_implicit_org_Org1MSP",
+		"_lifecycle$$h_implicit_org_Org1MSP",
+		"_lifecycle$$p_implicit_org_Org2MSP",
+		"_lifecycle$$h_implicit_org_Org2MSP",
+		"lscc",
+		"",
+	}
+
+	fakeChannelInfoProvider := &testmock.ChannelInfoProvider{}
+	fakeChannelInfoProvider.NamespacesAndCollectionsReturns(namespacesAndCollections, nil)
+	nsProvider := &namespaceProvider{fakeChannelInfoProvider}
+	namespaces, err := nsProvider.PossibleNamespaces(&statecouchdb.VersionedDB{})
+	require.NoError(t, err)
+	require.ElementsMatch(t, expectedNamespaces, namespaces)
 }

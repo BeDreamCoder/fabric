@@ -1,20 +1,11 @@
 // +build pkcs11
 
 /*
-Copyright IBM Corp. 2017 All Rights Reserved.
+Copyright IBM Corp. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-		 http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+SPDX-License-Identifier: Apache-2.0
 */
+
 package factory
 
 import (
@@ -23,11 +14,13 @@ import (
 	"github.com/pkg/errors"
 )
 
+const pkcs11Enabled = false
+
 // FactoryOpts holds configuration information used to initialize factory implementations
 type FactoryOpts struct {
-	ProviderName string             `mapstructure:"default" json:"default" yaml:"Default"`
-	SwOpts       *SwOpts            `mapstructure:"SW,omitempty" json:"SW,omitempty" yaml:"SwOpts"`
-	Pkcs11Opts   *pkcs11.PKCS11Opts `mapstructure:"PKCS11,omitempty" json:"PKCS11,omitempty" yaml:"PKCS11"`
+	Default string             `json:"default" yaml:"Default"`
+	SW      *SwOpts            `json:"SW,omitempty" yaml:"SW,omitempty"`
+	PKCS11  *pkcs11.PKCS11Opts `json:"PKCS11,omitempty" yaml:"PKCS11"`
 }
 
 // InitFactories must be called before using factory interfaces
@@ -36,66 +29,63 @@ type FactoryOpts struct {
 // Error is returned only if defaultBCCSP cannot be found
 func InitFactories(config *FactoryOpts) error {
 	factoriesInitOnce.Do(func() {
-		setFactories(config)
+		factoriesInitError = initFactories(config)
 	})
 
 	return factoriesInitError
 }
 
-func setFactories(config *FactoryOpts) error {
+func initFactories(config *FactoryOpts) error {
 	// Take some precautions on default opts
 	if config == nil {
 		config = GetDefaultOpts()
 	}
 
-	if config.ProviderName == "" {
-		config.ProviderName = "SW"
+	if config.Default == "" {
+		config.Default = "SW"
 	}
 
-	if config.SwOpts == nil {
-		config.SwOpts = GetDefaultOpts().SwOpts
+	if config.SW == nil {
+		config.SW = GetDefaultOpts().SW
 	}
-
-	// Initialize factories map
-	bccspMap = make(map[string]bccsp.BCCSP)
 
 	// Software-Based BCCSP
-	if config.SwOpts != nil {
+	if config.Default == "SW" && config.SW != nil {
 		f := &SWFactory{}
-		err := initBCCSP(f, config)
+		var err error
+		defaultBCCSP, err = initBCCSP(f, config)
 		if err != nil {
-			factoriesInitError = errors.Wrap(err, "Failed initializing SW.BCCSP")
+			return errors.Wrap(err, "Failed initializing SW.BCCSP")
 		}
 	}
 
 	// PKCS11-Based BCCSP
-	if config.Pkcs11Opts != nil {
+	if config.Default == "PKCS11" && config.PKCS11 != nil {
 		f := &PKCS11Factory{}
-		err := initBCCSP(f, config)
+		var err error
+		defaultBCCSP, err = initBCCSP(f, config)
 		if err != nil {
-			factoriesInitError = errors.Wrapf(err, "Failed initializing PKCS11.BCCSP %s", factoriesInitError)
+			return errors.Wrapf(err, "Failed initializing PKCS11.BCCSP")
 		}
 	}
 
-	var ok bool
-	DefaultBCCSP, ok = bccspMap[config.ProviderName]
-	if !ok {
-		factoriesInitError = errors.Errorf("%s\nCould not find default `%s` BCCSP", factoriesInitError, config.ProviderName)
+	if defaultBCCSP == nil {
+		return errors.Errorf("Could not find default `%s` BCCSP", config.Default)
 	}
 
-	return factoriesInitError
+	return nil
 }
 
 // GetBCCSPFromOpts returns a BCCSP created according to the options passed in input.
 func GetBCCSPFromOpts(config *FactoryOpts) (bccsp.BCCSP, error) {
 	var f BCCSPFactory
-	switch config.ProviderName {
+	switch config.Default {
 	case "SW":
 		f = &SWFactory{}
 	case "PKCS11":
 		f = &PKCS11Factory{}
 	default:
-		return nil, errors.Errorf("Could not find BCCSP, no '%s' provider", config.ProviderName)
+		return nil, errors.Errorf("Could not find BCCSP, no '%s' provider", config.Default)
 	}
 
 	csp, err := f.Get(config)

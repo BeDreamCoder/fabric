@@ -17,7 +17,7 @@ OUTPUT=$3
 
 >&2 jq . "$2/metadata.json"
 
-if [[ "$(jq -r .package_id "$METADATA/metadata.json")" == *fail* ]]; then
+if [[ "$(jq -r .label "$METADATA/metadata.json")" == *fail* ]]; then
     >&2 echo "Exiting with failure..."
     exit 1
 fi
@@ -27,7 +27,7 @@ if [ -f "$SOURCE/src/go.mod" ]; then
     cd "$SOURCE/src"
     go build -v -mod=readonly -o "$OUTPUT/chaincode" "$GO_PACKAGE_PATH"
 else
-    GO111MODULE=off go build -v  -o "$OUTPUT/chaincode" "$GO_PACKAGE_PATH"
+    GOPATH="$SOURCE" GO111MODULE=off go build -v  -o "$OUTPUT/chaincode" "$GO_PACKAGE_PATH"
 fi
 
 # copy index metadata if present

@@ -17,7 +17,7 @@ import (
 	"github.com/hyperledger/fabric/internal/peer/common"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func initInstallTest(t *testing.T, fsPath string, ec pb.EndorserClient, mockResponse *pb.ProposalResponse) (*cobra.Command, *ChaincodeCmdFactory) {
@@ -43,7 +43,7 @@ func initInstallTest(t *testing.T, fsPath string, ec pb.EndorserClient, mockResp
 		EndorserClients: []pb.EndorserClient{ec},
 	}
 	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	cmd := installCmd(mockCF, nil, cryptoProvider)
 	addFlags(cmd)
@@ -57,7 +57,7 @@ func cleanupInstallTest(fsPath string) {
 
 func TestInstallBadVersion(t *testing.T) {
 	fsPath, err := ioutil.TempDir("", "installbadversion")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	cmd, _ := initInstallTest(t, fsPath, nil, nil)
 	defer cleanupInstallTest(fsPath)
@@ -72,7 +72,7 @@ func TestInstallBadVersion(t *testing.T) {
 
 func TestInstallNonExistentCC(t *testing.T) {
 	fsPath, err := ioutil.TempDir("", "install-nonexistentcc")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	cmd, _ := initInstallTest(t, fsPath, nil, nil)
 	defer cleanupInstallTest(fsPath)
@@ -146,7 +146,7 @@ func installCC(t *testing.T) error {
 	defer viper.Reset()
 
 	fsPath, err := ioutil.TempDir("", "installLegacyEx02")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	cmd, _ := initInstallTest(t, fsPath, nil, nil)
 	defer cleanupInstallTest(fsPath)
 
@@ -164,25 +164,4 @@ func TestInstall(t *testing.T) {
 	if err := installCC(t); err != nil {
 		t.Fatalf("Install failed with error: %v", err)
 	}
-}
-
-func newInstallerForTest(t *testing.T, ec pb.EndorserClient) (installer *Installer, cleanup func()) {
-	fsPath, err := ioutil.TempDir("", "installerForTest")
-	assert.NoError(t, err)
-	_, mockCF := initInstallTest(t, fsPath, ec, nil)
-
-	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
-	assert.NoError(t, err)
-
-	i := &Installer{
-		EndorserClients: mockCF.EndorserClients,
-		Signer:          mockCF.Signer,
-		CryptoProvider:  cryptoProvider,
-	}
-
-	cleanupFunc := func() {
-		cleanupInstallTest(fsPath)
-	}
-
-	return i, cleanupFunc
 }

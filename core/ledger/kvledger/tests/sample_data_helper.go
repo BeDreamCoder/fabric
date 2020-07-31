@@ -12,7 +12,7 @@ import (
 
 	protopeer "github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/core/ledger"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type submittedData map[string]*submittedLedgerData
@@ -42,12 +42,12 @@ func (s submittedData) recordSubmittedTxs(lgrid string, tx ...*txAndPvtdata) {
 
 type sampleDataHelper struct {
 	submittedData submittedData
-	assert        *assert.Assertions
+	assert        *require.Assertions
 	t             *testing.T
 }
 
 func newSampleDataHelper(t *testing.T) *sampleDataHelper {
-	return &sampleDataHelper{make(submittedData), assert.New(t), t}
+	return &sampleDataHelper{make(submittedData), require.New(t), t}
 }
 
 func (d *sampleDataHelper) populateLedger(h *testhelper) {
@@ -205,9 +205,11 @@ func (d *sampleDataHelper) verifyBlockAndPvtdataUsingSubmittedData(h *testhelper
 			h.verifyBlockAndPvtData(uint64(8), nil, func(r *retrievedBlockAndPvtdata) {
 				r.sameBlockHeaderAndData(submittedBlk.Block)
 				r.containsValidationCode(0, protopeer.TxValidationCode_MVCC_READ_CONFLICT)
+				r.containsCommitHash()
 			})
 		}
 	}
+	h.verifyCommitHashExists()
 }
 
 func (d *sampleDataHelper) verifyGetTransactionByIDUsingSubmittedData(h *testhelper) {

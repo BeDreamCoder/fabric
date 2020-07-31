@@ -65,14 +65,14 @@ var _ = Describe("CouchDB indexes", func() {
 		client, err = docker.NewClientFromEnv()
 		Expect(err).NotTo(HaveOccurred())
 
-		network = nwo.New(nwo.BasicSolo(), testDir, client, StartPort(), components)
+		network = nwo.New(nwo.FullSolo(), testDir, client, StartPort(), components)
 
 		cwd, err := os.Getwd()
 		Expect(err).NotTo(HaveOccurred())
 		network.ExternalBuilders = append(network.ExternalBuilders, fabricconfig.ExternalBuilder{
 			Path:                 filepath.Join(cwd, "..", "externalbuilders", "golang"),
 			Name:                 "external-golang",
-			EnvironmentWhitelist: []string{"GOPATH", "GOCACHE", "GOPROXY", "HOME", "PATH"},
+			PropagateEnvironment: []string{"GOPATH", "GOCACHE", "GOPROXY", "HOME", "PATH"},
 		})
 
 		network.GenerateConfigTree()

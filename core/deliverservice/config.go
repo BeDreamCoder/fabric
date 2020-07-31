@@ -11,8 +11,8 @@ import (
 	"io/ioutil"
 	"time"
 
-	"github.com/hyperledger/fabric/core/comm"
 	"github.com/hyperledger/fabric/core/config"
+	"github.com/hyperledger/fabric/internal/pkg/comm"
 	"github.com/hyperledger/fabric/internal/pkg/peer/orderers"
 
 	"github.com/pkg/errors"
@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	DefaultReConnectBackoffThreshold   = float64(time.Hour)
+	DefaultReConnectBackoffThreshold   = time.Hour * 1
 	DefaultReConnectTotalTimeThreshold = time.Second * 60 * 60
 	DefaultConnectionTimeout           = time.Second * 3
 )
@@ -30,7 +30,7 @@ type DeliverServiceConfig struct {
 	// PeerTLSEnabled enables/disables Peer TLS.
 	PeerTLSEnabled bool
 	// ReConnectBackoffThreshold sets the delivery service maximal delay between consencutive retries.
-	ReConnectBackoffThreshold float64
+	ReConnectBackoffThreshold time.Duration
 	// ReconnectTotalTimeThreshold sets the total time the delivery service may spend in reconnection attempts
 	// until its retry logic gives up and returns an error.
 	ReconnectTotalTimeThreshold time.Duration
@@ -47,9 +47,9 @@ type DeliverServiceConfig struct {
 }
 
 type AddressOverride struct {
-	From        string `mapstructure:"from"`
-	To          string `mapstructure:"to"`
-	CACertsFile string `mapstructure:"caCertsFile"`
+	From        string
+	To          string
+	CACertsFile string
 }
 
 // GlobalConfig obtains a set of configuration from viper, build and returns the config struct.
@@ -97,7 +97,7 @@ func LoadOverridesMap() (map[string]*orderers.Endpoint, error) {
 func (c *DeliverServiceConfig) loadDeliverServiceConfig() {
 	c.PeerTLSEnabled = viper.GetBool("peer.tls.enabled")
 
-	c.ReConnectBackoffThreshold = viper.GetFloat64("peer.deliveryclient.reConnectBackoffThreshold")
+	c.ReConnectBackoffThreshold = viper.GetDuration("peer.deliveryclient.reConnectBackoffThreshold")
 	if c.ReConnectBackoffThreshold == 0 {
 		c.ReConnectBackoffThreshold = DefaultReConnectBackoffThreshold
 	}

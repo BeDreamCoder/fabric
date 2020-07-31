@@ -9,12 +9,11 @@ package multichannel
 import (
 	cb "github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/bccsp"
-	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
-	"github.com/hyperledger/fabric/common/policies"
 	"github.com/hyperledger/fabric/internal/pkg/identity"
 	"github.com/hyperledger/fabric/orderer/common/blockcutter"
 	"github.com/hyperledger/fabric/orderer/common/msgprocessor"
+	"github.com/hyperledger/fabric/orderer/common/types"
 	"github.com/hyperledger/fabric/orderer/consensus"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
@@ -34,6 +33,11 @@ type ChainSupport struct {
 	// that there is a single consensus type at this orderer node and therefore the resolution of
 	// the consensus type too happens only at the ChainSupport level.
 	consensus.MetadataValidator
+
+	// The registrar is not aware of the exact type that the Chain is, e.g. etcdraft, inactive, or follower.
+	// Therefore, we let each chain report its cluster relation and status through this interface. Non cluster
+	// type chains (solo, kafka) are assigned a static reporter.
+	consensus.StatusReporter
 }
 
 func newChainSupport(
@@ -43,14 +47,14 @@ func newChainSupport(
 	signer identity.SignerSerializer,
 	blockcutterMetrics *blockcutter.Metrics,
 	bccsp bccsp.BCCSP,
-) *ChainSupport {
+) (*ChainSupport, error) {
 	// Read in the last block and metadata for the channel
 	lastBlock := blockledger.GetBlock(ledgerResources, ledgerResources.Height()-1)
 	metadata, err := protoutil.GetConsenterMetadataFromBlock(lastBlock)
 	// Assuming a block created with cb.NewBlock(), this should not
 	// error even if the orderer metadata is an empty byte slice
 	if err != nil {
-		logger.Fatalf("[channel: %s] Error extracting orderer metadata: %s", ledgerResources.ConfigtxValidator().ChannelID(), err)
+		return nil, errors.Wrapf(err, "error extracting orderer metadata for channel: %s", ledgerResources.ConfigtxValidator().ChannelID())
 	}
 
 	// Construct limited support needed as a parameter for additional support
@@ -75,12 +79,12 @@ func newChainSupport(
 	consenterType := ledgerResources.SharedConfig().ConsensusType()
 	consenter, ok := consenters[consenterType]
 	if !ok {
-		logger.Panicf("Error retrieving consenter of type: %s", consenterType)
+		return nil, errors.Errorf("error retrieving consenter of type: %s", consenterType)
 	}
 
 	cs.Chain, err = consenter.HandleChain(cs, metadata)
 	if err != nil {
-		logger.Panicf("[channel: %s] Error creating consenter: %s", cs.ChannelID(), err)
+		return nil, errors.Wrapf(err, "error creating consenter for channel: %s", cs.ChannelID())
 	}
 
 	cs.MetadataValidator, ok = cs.Chain.(consensus.MetadataValidator)
@@ -88,18 +92,14 @@ func newChainSupport(
 		cs.MetadataValidator = consensus.NoOpMetadataValidator{}
 	}
 
+	cs.StatusReporter, ok = cs.Chain.(consensus.StatusReporter)
+	if !ok { // Non-cluster types: solo, kafka
+		cs.StatusReporter = consensus.StaticStatusReporter{ClusterRelation: types.ClusterRelationNone, Status: types.StatusActive}
+	}
+
 	logger.Debugf("[channel: %s] Done creating channel support resources", cs.ChannelID())
 
-	return cs
-}
-
-// Block returns a block with the following number,
-// or nil if such a block doesn't exist.
-func (cs *ChainSupport) Block(number uint64) *cb.Block {
-	if cs.Height() <= number {
-		return nil
-	}
-	return blockledger.GetBlock(cs.Reader(), number)
+	return cs, nil
 }
 
 func (cs *ChainSupport) Reader() blockledger.Reader {
@@ -165,11 +165,6 @@ func (cs *ChainSupport) ProposeConfigUpdate(configtx *cb.Envelope) (*cb.ConfigEn
 	return env, nil
 }
 
-// ChannelID passes through to the underlying configtx.Validator
-func (cs *ChainSupport) ChannelID() string {
-	return cs.ConfigtxValidator().ChannelID()
-}
-
 // ConfigProto passes through to the underlying configtx.Validator
 func (cs *ChainSupport) ConfigProto() *cb.Config {
 	return cs.ConfigtxValidator().ConfigProto()
@@ -184,31 +179,4 @@ func (cs *ChainSupport) Sequence() uint64 {
 // unlike WriteBlock that also mutates its metadata.
 func (cs *ChainSupport) Append(block *cb.Block) error {
 	return cs.ledgerResources.ReadWriter.Append(block)
-}
-
-// VerifyBlockSignature verifies a signature of a block.
-// It has an optional argument of a configuration envelope
-// which would make the block verification to use validation rules
-// based on the given configuration in the ConfigEnvelope.
-// If the config envelope passed is nil, then the validation rules used
-// are the ones that were applied at commit of previous blocks.
-func (cs *ChainSupport) VerifyBlockSignature(sd []*protoutil.SignedData, envelope *cb.ConfigEnvelope) error {
-	policyMgr := cs.PolicyManager()
-	// If the envelope passed isn't nil, we should use a different policy manager.
-	if envelope != nil {
-		bundle, err := channelconfig.NewBundle(cs.ChannelID(), envelope.Config, cs.BCCSP)
-		if err != nil {
-			return err
-		}
-		policyMgr = bundle.PolicyManager()
-	}
-	policy, exists := policyMgr.GetPolicy(policies.BlockValidation)
-	if !exists {
-		return errors.Errorf("policy %s wasn't found", policies.BlockValidation)
-	}
-	err := policy.EvaluateSignedData(sd)
-	if err != nil {
-		return errors.Wrap(err, "block verification failed")
-	}
-	return nil
 }

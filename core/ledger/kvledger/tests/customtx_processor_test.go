@@ -1,5 +1,6 @@
 /*
 Copyright IBM Corp. All Rights Reserved.
+
 SPDX-License-Identifier: Apache-2.0
 */
 
@@ -15,14 +16,14 @@ import (
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/ledgermgmt"
 	"github.com/hyperledger/fabric/core/ledger/mock"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReadWriteCustomTxProcessor(t *testing.T) {
 	fakeTxProcessor := &mock.CustomTxProcessor{}
 
 	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	env := newEnvWithInitializer(
 		t,
@@ -30,7 +31,7 @@ func TestReadWriteCustomTxProcessor(t *testing.T) {
 			CustomTxProcessors: map[common.HeaderType]ledger.CustomTxProcessor{
 				100: fakeTxProcessor,
 			},
-			Hasher: cryptoProvider,
+			HashProvider: cryptoProvider,
 		},
 	)
 	defer env.cleanup()
@@ -49,8 +50,8 @@ func TestReadWriteCustomTxProcessor(t *testing.T) {
 		// tx processor reads and modifies key1
 		func(txEnvelop *common.Envelope, s ledger.TxSimulator, initializingLedger bool) error {
 			valKey1, err := s.GetState("ns", "key1")
-			assert.NoError(t, err)
-			assert.Equal(t, []byte("value1"), valKey1)
+			require.NoError(t, err)
+			require.Equal(t, []byte("value1"), valKey1)
 			valueCounter++
 			return s.SetState("ns", "key1", []byte(fmt.Sprintf("value1_%d", valueCounter)))
 		}
@@ -73,7 +74,7 @@ func TestRangeReadAndWriteCustomTxProcessor(t *testing.T) {
 	fakeTxProcessor3 := &mock.CustomTxProcessor{}
 
 	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	env := newEnvWithInitializer(
 		t,
@@ -83,7 +84,7 @@ func TestRangeReadAndWriteCustomTxProcessor(t *testing.T) {
 				102: fakeTxProcessor2,
 				103: fakeTxProcessor3,
 			},
-			Hasher: cryptoProvider,
+			HashProvider: cryptoProvider,
 		},
 	)
 	defer env.cleanup()
@@ -107,10 +108,10 @@ func TestRangeReadAndWriteCustomTxProcessor(t *testing.T) {
 		// tx processor for txtype 102 reads a range (that covers key1) and sets key2
 		func(txEnvelop *common.Envelope, s ledger.TxSimulator, initializingLedger bool) error {
 			itr, err := s.GetStateRangeScanIterator("ns", "key1", "key2")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			for {
 				res, err := itr.Next()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				if res == nil {
 					break
 				}
@@ -122,10 +123,10 @@ func TestRangeReadAndWriteCustomTxProcessor(t *testing.T) {
 		// tx processor for txtype 103 reads a range (that does not include key1) and sets key2
 		func(txEnvelop *common.Envelope, s ledger.TxSimulator, initializingLedger bool) error {
 			itr, err := s.GetStateRangeScanIterator("ns", "key2", "key3")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			for {
 				res, err := itr.Next()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				if res == nil {
 					break
 				}

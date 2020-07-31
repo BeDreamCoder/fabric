@@ -11,55 +11,58 @@ pr:
 variables:
   GOPATH: $(Agent.BuildDirectory)/go
   PATH: $(Agent.BuildDirectory)/go/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin:/usr/local/sbin
-  GOVER: 1.13.4
+  GOVER: 1.14.4
 
-jobs:
-  - job: VerifyBuild
-    pool:
-      vmImage: ubuntu-16.04
-    steps:
-      - template: install_deps.yml
-      - checkout: self
-        path: 'go/src/github.com/hyperledger/fabric'
-        displayName: Checkout Fabric Code
-      - script: make basic-checks native
-        displayName: Verify Build
+stages:
+  - stage: VerifyBuild
+    dependsOn: []
+    jobs:
+      - job: Checks
+        pool:
+          vmImage: ubuntu-18.04
+        steps:
+          - template: install_deps.yml
+          - checkout: self
+            path: 'fabric'
+            displayName: Checkout Fabric Code
+          - script: make basic-checks native
+            displayName: Run Basic Checks
+          - script: ./ci/scripts/evaluate_commits.sh
+            name: SetJobTriggers
 
-  - job: DocBuild
-    pool:
-      vmImage: ubuntu-16.04
-    container:
-      image: n42org/tox:3.4.0
-    steps:
-      - checkout: self
-        path: 'go/src/github.com/hyperledger/fabric'
-        displayName: Checkout Fabric Code
-      - script: tox -edocs
-        displayName: Build Documentation
-      - publish: 'docs/_build/html'
-        displayName: Publish Documentation Artifacts
+  - stage: UnitTests
+    dependsOn: VerifyBuild
+    jobs:
+      - job: UnitTests
+        condition: eq(stageDependencies.VerifyBuild.Checks.outputs['SetJobTriggers.runTests'], 'true')
+        pool:
+          vmImage: ubuntu-18.04
+        steps:
+          - template: install_deps.yml
+          - checkout: self
+            path: 'fabric'
+            displayName: Checkout Fabric Code
+          - script: ./ci/scripts/setup_hsm.sh
+            displayName: Install SoftHSM
+          - script: make unit-test
+            displayName: Run Unit Tests
 
-  - job: UnitTests
-    pool:
-      vmImage: ubuntu-16.04
-    steps:
-      - template: install_deps.yml
-      - checkout: self
-        path: 'go/src/github.com/hyperledger/fabric'
-        displayName: Checkout Fabric Code
-      - script: ./ci/scripts/setup_hsm.sh
-        displayName: Install SoftHSM
-      - script: make unit-test
-        displayName: Run Unit Tests
-
-  - job: IntegrationTests
-    pool:
-      vmImage: ubuntu-16.04
-    timeoutInMinutes: 120
-    steps:
-      - template: install_deps.yml
-      - checkout: self
-        path: 'go/src/github.com/hyperledger/fabric'
-        displayName: Checkout Fabric Code
-      - script: make integration-test
-        displayName: Run Integration Tests
+  - stage: IntegrationTests
+    dependsOn: VerifyBuild
+    jobs:
+      - job: IntegrationTests
+        condition: eq(stageDependencies.VerifyBuild.Checks.outputs['SetJobTriggers.runTests'], 'true')
+        pool:
+          vmImage: ubuntu-18.04
+        strategy:
+          parallel: 5
+        timeoutInMinutes: 90
+        steps:
+          - template: install_deps.yml
+          - checkout: self
+            path: 'fabric'
+            displayName: Checkout Fabric Code
+          - script: ./ci/scripts/setup_hsm.sh
+            displayName: Install SoftHSM
+          - script: make integration-test
+            displayName: Run Integration Tests

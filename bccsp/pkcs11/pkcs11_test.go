@@ -15,67 +15,58 @@ import (
 
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/miekg/pkcs11"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestKeyGenFailures(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping TestKeyGenFailures")
-	}
 	var testOpts bccsp.KeyGenOpts
 	ki := currentBCCSP
 	_, err := ki.KeyGen(testOpts)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Invalid Opts parameter. It must not be nil")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Invalid Opts parameter. It must not be nil")
 }
 
 func TestLoadLib(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping TestLoadLib")
-	}
 	// Setup PKCS11 library and provide initial set of values
 	lib, pin, label := FindPKCS11Lib()
 
 	// Test for no specified PKCS11 library
 	_, _, _, err := loadLib("", pin, label)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "No PKCS11 library default")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "No PKCS11 library default")
 
 	// Test for invalid PKCS11 library
 	_, _, _, err = loadLib("badLib", pin, label)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Instantiate failed")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Instantiate failed")
 
 	// Test for invalid label
 	_, _, _, err = loadLib(lib, pin, "badLabel")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Could not find token with label")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "could not find token with label")
 
 	// Test for no pin
 	_, _, _, err = loadLib(lib, "", label)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "No PIN set")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Login failed: pkcs11")
 }
 
 func TestNamedCurveFromOID(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping TestNamedCurveFromOID")
-	}
 	// Test for valid P224 elliptic curve
 	namedCurve := namedCurveFromOID(oidNamedCurveP224)
-	assert.Equal(t, elliptic.P224(), namedCurve, "Did not receive expected named curve for oidNamedCurveP224")
+	require.Equal(t, elliptic.P224(), namedCurve, "Did not receive expected named curve for oidNamedCurveP224")
 
 	// Test for valid P256 elliptic curve
 	namedCurve = namedCurveFromOID(oidNamedCurveP256)
-	assert.Equal(t, elliptic.P256(), namedCurve, "Did not receive expected named curve for oidNamedCurveP256")
+	require.Equal(t, elliptic.P256(), namedCurve, "Did not receive expected named curve for oidNamedCurveP256")
 
 	// Test for valid P256 elliptic curve
 	namedCurve = namedCurveFromOID(oidNamedCurveP384)
-	assert.Equal(t, elliptic.P384(), namedCurve, "Did not receive expected named curve for oidNamedCurveP384")
+	require.Equal(t, elliptic.P384(), namedCurve, "Did not receive expected named curve for oidNamedCurveP384")
 
 	// Test for valid P521 elliptic curve
 	namedCurve = namedCurveFromOID(oidNamedCurveP521)
-	assert.Equal(t, elliptic.P521(), namedCurve, "Did not receive expected named curved for oidNamedCurveP521")
+	require.Equal(t, elliptic.P521(), namedCurve, "Did not receive expected named curved for oidNamedCurveP521")
 
 	testAsn1Value := asn1.ObjectIdentifier{4, 9, 15, 1}
 	namedCurve = namedCurveFromOID(testAsn1Value)
@@ -85,12 +76,11 @@ func TestNamedCurveFromOID(t *testing.T) {
 }
 
 func TestPKCS11GetSession(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping TestPKCS11GetSession")
-	}
 	var sessions []pkcs11.SessionHandle
 	for i := 0; i < 3*sessionCacheSize; i++ {
-		sessions = append(sessions, currentBCCSP.(*impl).getSession())
+		session, err := currentBCCSP.(*impl).getSession()
+		require.NoError(t, err)
+		sessions = append(sessions, session)
 	}
 
 	// Return all sessions, should leave sessionCacheSize cached
@@ -105,13 +95,13 @@ func TestPKCS11GetSession(t *testing.T) {
 
 	// Should be able to get sessionCacheSize cached sessions
 	for i := 0; i < sessionCacheSize; i++ {
-		sessions = append(sessions, currentBCCSP.(*impl).getSession())
+		session, err := currentBCCSP.(*impl).getSession()
+		require.NoError(t, err)
+		sessions = append(sessions, session)
 	}
 
-	// This one should fail
-	assert.Panics(t, func() {
-		currentBCCSP.(*impl).getSession()
-	}, "Should not been able to create another session")
+	_, err := currentBCCSP.(*impl).getSession()
+	require.EqualError(t, err, "OpenSession failed: pkcs11: 0x3: CKR_SLOT_ID_INVALID")
 
 	// Cleanup
 	for _, session := range sessions {
@@ -121,10 +111,6 @@ func TestPKCS11GetSession(t *testing.T) {
 }
 
 func TestPKCS11ECKeySignVerify(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping TestPKCS11ECKeySignVerify")
-	}
-
 	msg1 := []byte("This is my very authentic message")
 	msg2 := []byte("This is my very unauthentic message")
 	hash1, _ := currentBCCSP.Hash(msg1, &bccsp.SHAOpts{})
@@ -149,8 +135,8 @@ func TestPKCS11ECKeySignVerify(t *testing.T) {
 	}
 
 	_, _, err = currentBCCSP.(*impl).signP11ECDSA(nil, hash1)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Private key not found")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Private key not found")
 
 	pass, err := currentBCCSP.(*impl).verifyP11ECDSA(key, hash1, R, S, currentTestConfig.securityLevel/8)
 	if err != nil {

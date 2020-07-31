@@ -8,6 +8,8 @@ package etcdraft
 
 import (
 	"bytes"
+	"github.com/hyperledger/fabric/common/channelconfig"
+	"github.com/hyperledger/fabric/protoutil"
 	"path"
 	"reflect"
 	"time"
@@ -20,7 +22,7 @@ import (
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/metrics"
-	"github.com/hyperledger/fabric/core/comm"
+	"github.com/hyperledger/fabric/internal/pkg/comm"
 	"github.com/hyperledger/fabric/orderer/common/cluster"
 	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/hyperledger/fabric/orderer/common/multichannel"
@@ -31,16 +33,13 @@ import (
 	"go.etcd.io/etcd/raft"
 )
 
-// CreateChainCallback creates a new chain
-type CreateChainCallback func()
-
 //go:generate mockery -dir . -name InactiveChainRegistry -case underscore -output mocks
 
 // InactiveChainRegistry registers chains that are inactive
 type InactiveChainRegistry interface {
 	// TrackChain tracks a chain with the given name, and calls the given callback
 	// when this chain should be created.
-	TrackChain(chainName string, genesisBlock *common.Block, createChain CreateChainCallback)
+	TrackChain(chainName string, genesisBlock *common.Block, createChain func())
 }
 
 //go:generate mockery -dir . -name ChainGetter -case underscore -output mocks
@@ -161,10 +160,15 @@ func (c *Consenter) HandleChain(support consensus.ConsenterSupport, metadata *co
 
 	id, err := c.detectSelfID(consenters)
 	if err != nil {
-		c.InactiveChainRegistry.TrackChain(support.ChannelID(), support.Block(0), func() {
-			c.CreateChain(support.ChannelID())
-		})
-		return &inactive.Chain{Err: errors.Errorf("channel %s is not serviced by me", support.ChannelID())}, nil
+		if c.InactiveChainRegistry != nil {
+			// There is a system channel, use the InactiveChainRegistry to track the future config updates of application channel.
+			c.InactiveChainRegistry.TrackChain(support.ChannelID(), support.Block(0), func() {
+				c.CreateChain(support.ChannelID())
+			})
+			return &inactive.Chain{Err: errors.Errorf("channel %s is not serviced by me", support.ChannelID())}, nil
+		}
+
+		return nil, errors.Wrap(err, "without a system channel, a follower should have been created")
 	}
 
 	var evictionSuspicion time.Duration
@@ -215,6 +219,26 @@ func (c *Consenter) HandleChain(support consensus.ConsenterSupport, metadata *co
 		Comm:          c.Communication,
 		StreamsByType: cluster.NewStreamsByType(),
 	}
+
+	// when we have a system channel
+	if c.InactiveChainRegistry != nil {
+		return NewChain(
+			support,
+			opts,
+			c.Communication,
+			rpc,
+			c.BCCSP,
+			func() (BlockPuller, error) {
+				return NewBlockPuller(support, c.Dialer, c.OrdererConfig.General.Cluster, c.BCCSP)
+			},
+			func() {
+				c.InactiveChainRegistry.TrackChain(support.ChannelID(), nil, func() { c.CreateChain(support.ChannelID()) })
+			},
+			nil,
+		)
+	}
+
+	// when we do NOT have a system channel
 	return NewChain(
 		support,
 		opts,
@@ -225,10 +249,46 @@ func (c *Consenter) HandleChain(support consensus.ConsenterSupport, metadata *co
 			return NewBlockPuller(support, c.Dialer, c.OrdererConfig.General.Cluster, c.BCCSP)
 		},
 		func() {
-			c.InactiveChainRegistry.TrackChain(support.ChannelID(), nil, func() { c.CreateChain(support.ChannelID()) })
+			c.Logger.Warning("Start a follower.Chain: not yet implemented")
+			//TODO plug a function pointer to start follower.Chain
 		},
 		nil,
 	)
+}
+
+func (c *Consenter) IsChannelMember(joinBlock *common.Block) (bool, error) {
+	if joinBlock == nil {
+		return false, errors.New("nil block")
+	}
+	envelopeConfig, err := protoutil.ExtractEnvelope(joinBlock, 0)
+	if err != nil {
+		return false, err
+	}
+	bundle, err := channelconfig.NewBundleFromEnvelope(envelopeConfig, c.BCCSP)
+	if err != nil {
+		return false, err
+	}
+	oc, exists := bundle.OrdererConfig()
+	if !exists {
+		return false, errors.New("no orderer config in bundle")
+	}
+	configMetadata := &etcdraft.ConfigMetadata{}
+	if err := proto.Unmarshal(oc.ConsensusMetadata(), configMetadata); err != nil {
+		return false, err
+	}
+	if err := CheckConfigMetadata(configMetadata); err != nil {
+		return false, err
+	}
+
+	member := false
+	for _, consenter := range configMetadata.Consenters {
+		if bytes.Equal(c.Cert, consenter.ServerTlsCert) || bytes.Equal(c.Cert, consenter.ClientTlsCert) {
+			member = true
+			break
+		}
+	}
+
+	return member, nil
 }
 
 // ReadBlockMetadata attempts to read raft metadata from block metadata, if available.
@@ -304,6 +364,11 @@ func New(
 		Dispatcher: comm,
 	}
 	orderer.RegisterClusterServer(srv.Server(), svc)
+
+	if icr == nil {
+		logger.Debug("Created an etcdraft consenter without a system channel, InactiveChainRegistry is nil")
+	}
+
 	return consenter
 }
 

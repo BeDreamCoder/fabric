@@ -14,7 +14,7 @@ import (
 	pb "github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/bccsp/factory"
-	"github.com/hyperledger/fabric/common/cauthdsl"
+	"github.com/hyperledger/fabric/common/policydsl"
 	"github.com/hyperledger/fabric/core/common/ccpackage"
 	"github.com/hyperledger/fabric/internal/pkg/identity"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
@@ -163,7 +163,7 @@ func (p *Packager) packageCC() error {
 		bytesToWrite = protoutil.MarshalOrPanic(cds)
 	}
 
-	logger.Debugf("Packaged chaincode into deployment spec of size <%d>, output file ", len(bytesToWrite), p.Input.OutputFile)
+	logger.Debugf("Packaged chaincode into deployment spec of size %d, output file %s", len(bytesToWrite), p.Input.OutputFile)
 	err = ioutil.WriteFile(p.Input.OutputFile, bytesToWrite, 0700)
 	if err != nil {
 		logger.Errorf("failed writing deployment spec to file [%s]: [%s]", p.Input.OutputFile, err)
@@ -174,7 +174,7 @@ func (p *Packager) packageCC() error {
 }
 
 func getInstantiationPolicy(policy string) (*pcommon.SignaturePolicyEnvelope, error) {
-	p, err := cauthdsl.FromString(policy)
+	p, err := policydsl.FromString(policy)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "invalid policy %s", policy)
 	}

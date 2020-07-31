@@ -13,13 +13,12 @@ import (
 	"github.com/hyperledger/fabric/common/metrics/disabled"
 	"github.com/hyperledger/fabric/orderer/common/cluster"
 	"github.com/hyperledger/fabric/orderer/common/cluster/mocks"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )
 
 func TestConcurrentConnections(t *testing.T) {
-	t.Parallel()
 	// Scenario: Have 100 goroutines try to create a connection together at the same time,
 	// wait until one of them succeeds, and then wait until they all return,
 	// and also ensure they all return the same connection reference
@@ -33,8 +32,8 @@ func TestConcurrentConnections(t *testing.T) {
 	connect := func() {
 		defer wg.Done()
 		conn2, err := connStore.Connection("", nil)
-		assert.NoError(t, err)
-		assert.True(t, conn2 == conn)
+		require.NoError(t, err)
+		require.True(t, conn2 == conn)
 	}
 	for i := 0; i < n; i++ {
 		go connect()
@@ -60,7 +59,6 @@ func (cms *connectionMapperSpy) Lookup(cert []byte) (*grpc.ClientConn, bool) {
 }
 
 func TestConcurrentLookupMiss(t *testing.T) {
-	t.Parallel()
 	// Scenario: 2 concurrent connection attempts are made,
 	// and the first 2 Lookup operations are delayed,
 	// which makes the connection store attempt to connect
@@ -87,10 +85,10 @@ func TestConcurrentLookupMiss(t *testing.T) {
 		go func() {
 			defer goroutinesExited.Done()
 			conn2, err := connStore.Connection("", nil)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			// Ensure all calls for Connection() return the same reference
 			// of the gRPC connection.
-			assert.True(t, conn2 == conn)
+			require.True(t, conn2 == conn)
 		}()
 	}
 	// Wait for the Lookup() to be invoked by both

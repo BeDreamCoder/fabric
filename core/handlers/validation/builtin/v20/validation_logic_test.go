@@ -15,22 +15,38 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/bccsp/sw"
-	"github.com/hyperledger/fabric/common/cauthdsl"
 	commonerrors "github.com/hyperledger/fabric/common/errors"
-	mc "github.com/hyperledger/fabric/common/mocks/config"
-	lm "github.com/hyperledger/fabric/common/mocks/ledger"
+	"github.com/hyperledger/fabric/common/policydsl"
 	"github.com/hyperledger/fabric/core/committer/txvalidator/v14"
-	mocks2 "github.com/hyperledger/fabric/core/committer/txvalidator/v14/mocks"
 	"github.com/hyperledger/fabric/core/common/ccprovider"
 	validation "github.com/hyperledger/fabric/core/handlers/validation/api/capabilities"
+	vs "github.com/hyperledger/fabric/core/handlers/validation/api/state"
 	"github.com/hyperledger/fabric/core/handlers/validation/builtin/v20/mocks"
 	"github.com/hyperledger/fabric/msp"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	msptesttools "github.com/hyperledger/fabric/msp/mgmt/testtools"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
+
+//go:generate counterfeiter -o mocks/capabilities.go -fake-name Capabilities . capabilities
+
+type capabilities interface {
+	validation.Capabilities
+}
+
+//go:generate counterfeiter -o mocks/state.go -fake-name State . state
+
+type state interface {
+	vs.State
+}
+
+//go:generate counterfeiter -o mocks/state_fetcher.go -fake-name StateFetcher . stateFetcher
+
+type stateFetcher interface {
+	vs.StateFetcher
+}
 
 func createTx(endorsedByDuplicatedIdentity bool) (*common.Envelope, error) {
 	ccid := &peer.ChaincodeID{Name: "foo", Version: "v1"}
@@ -59,7 +75,7 @@ func createTx(endorsedByDuplicatedIdentity bool) (*common.Envelope, error) {
 }
 
 func getSignedByMSPMemberPolicy(mspID string) ([]byte, error) {
-	p := cauthdsl.SignedByMspMember(mspID)
+	p := policydsl.SignedByMspMember(mspID)
 
 	b, err := protoutil.Marshal(p)
 	if err != nil {
@@ -70,12 +86,21 @@ func getSignedByMSPMemberPolicy(mspID string) ([]byte, error) {
 }
 
 func newValidationInstance(state map[string]map[string][]byte) *Validator {
-	qec := &mocks2.QueryExecutorCreator{}
-	qec.On("NewQueryExecutor").Return(lm.NewMockQueryExecutor(state), nil)
-	return newCustomValidationInstance(qec, &mc.MockApplicationCapabilities{})
+	vs := &mocks.State{}
+	vs.GetStateMultipleKeysStub = func(namespace string, keys []string) ([][]byte, error) {
+		if ns, ok := state[namespace]; ok {
+			return [][]byte{ns[keys[0]]}, nil
+
+		} else {
+			return nil, fmt.Errorf("could not retrieve namespace %s", namespace)
+		}
+	}
+	sf := &mocks.StateFetcher{}
+	sf.FetchStateReturns(vs, nil)
+	return newCustomValidationInstance(sf, &mocks.Capabilities{})
 }
 
-func newCustomValidationInstance(qec txvalidator.QueryExecutorCreator, c validation.Capabilities) *Validator {
+func newCustomValidationInstance(sf vs.StateFetcher, c validation.Capabilities) *Validator {
 	sbvm := &mocks.StateBasedValidator{}
 	sbvm.On("PreValidate", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	sbvm.On("PostValidate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -84,7 +109,6 @@ func newCustomValidationInstance(qec txvalidator.QueryExecutorCreator, c validat
 	mockCR := &mocks.CollectionResources{}
 	mockCR.On("CollectionValidationInfo", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil, nil)
 
-	sf := &txvalidator.StateFetcherImpl{QueryExecutorCreator: qec}
 	is := &mocks.IdentityDeserializer{}
 	pe := &txvalidator.PolicyEvaluator{
 		IdentityDeserializer: mspmgmt.GetManagerForChain("testchannelid"),
@@ -96,9 +120,6 @@ func newCustomValidationInstance(qec txvalidator.QueryExecutorCreator, c validat
 }
 
 func TestStateBasedValidationFailure(t *testing.T) {
-	qec := &mocks2.QueryExecutorCreator{}
-	qec.On("NewQueryExecutor").Return(lm.NewMockQueryExecutor(make(map[string]map[string][]byte)), nil)
-
 	sbvm := &mocks.StateBasedValidator{}
 	sbvm.On("PreValidate", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	sbvm.On("PostValidate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -106,12 +127,12 @@ func TestStateBasedValidationFailure(t *testing.T) {
 	mockCR := &mocks.CollectionResources{}
 	mockCR.On("CollectionValidationInfo", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil, nil)
 
-	sf := &txvalidator.StateFetcherImpl{QueryExecutorCreator: qec}
+	sf := &mocks.StateFetcher{}
 	is := &mocks.IdentityDeserializer{}
 	pe := &txvalidator.PolicyEvaluator{
 		IdentityDeserializer: mspmgmt.GetManagerForChain("testchannelid"),
 	}
-	v := New(&mc.MockApplicationCapabilities{}, sf, is, pe, mockCR)
+	v := New(&mocks.Capabilities{}, sf, is, pe, mockCR)
 	v.stateBasedValidator = sbvm
 
 	tx, err := createTx(false)
@@ -134,19 +155,19 @@ func TestStateBasedValidationFailure(t *testing.T) {
 	// bad path: policy validation error
 	sbvm.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&commonerrors.VSCCEndorsementPolicyError{Err: fmt.Errorf("some sbe validation err")}).Once()
 	err = v.Validate(b, "foo", 0, 0, policy)
-	assert.Error(t, err)
-	assert.IsType(t, &commonerrors.VSCCEndorsementPolicyError{}, err)
+	require.Error(t, err)
+	require.IsType(t, &commonerrors.VSCCEndorsementPolicyError{}, err)
 
 	// bad path: execution error
 	sbvm.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&commonerrors.VSCCExecutionFailureError{Err: fmt.Errorf("some sbe validation err")}).Once()
 	err = v.Validate(b, "foo", 0, 0, policy)
-	assert.Error(t, err)
-	assert.IsType(t, &commonerrors.VSCCExecutionFailureError{}, err)
+	require.Error(t, err)
+	require.IsType(t, &commonerrors.VSCCExecutionFailureError{}, err)
 
 	// good path: signed by the right MSP
 	sbvm.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	err = v.Validate(b, "foo", 0, 0, policy)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestInvoke(t *testing.T) {
@@ -156,18 +177,18 @@ func TestInvoke(t *testing.T) {
 	var err error
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{[]byte("a")}}, Header: &common.BlockHeader{}}
 	err = v.Validate(b, "foo", 0, 0, []byte("a"))
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// (still) broken Envelope
 	b = &common.Block{Data: &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(&common.Envelope{Payload: []byte("barf")})}}, Header: &common.BlockHeader{}}
 	err = v.Validate(b, "foo", 0, 0, []byte("a"))
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// (still) broken Envelope
 	e := protoutil.MarshalOrPanic(&common.Envelope{Payload: protoutil.MarshalOrPanic(&common.Payload{Header: &common.Header{ChannelHeader: []byte("barf")}})})
 	b = &common.Block{Data: &common.BlockData{Data: [][]byte{e}}, Header: &common.BlockHeader{}}
 	err = v.Validate(b, "foo", 0, 0, []byte("a"))
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	tx, err := createTx(false)
 	if err != nil {
@@ -188,36 +209,36 @@ func TestInvoke(t *testing.T) {
 	e = protoutil.MarshalOrPanic(&common.Envelope{Payload: protoutil.MarshalOrPanic(&common.Payload{Header: &common.Header{ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{Type: int32(common.HeaderType_ORDERER_TRANSACTION)})}})})
 	b = &common.Block{Data: &common.BlockData{Data: [][]byte{e}}, Header: &common.BlockHeader{}}
 	err = v.Validate(b, "foo", 0, 0, policy)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// broken tx payload
 	e = protoutil.MarshalOrPanic(&common.Envelope{Payload: protoutil.MarshalOrPanic(&common.Payload{Header: &common.Header{ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{Type: int32(common.HeaderType_ORDERER_TRANSACTION)})}})})
 	b = &common.Block{Data: &common.BlockData{Data: [][]byte{e}}, Header: &common.BlockHeader{}}
 	err = v.Validate(b, "foo", 0, 0, policy)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// good path: signed by the right MSP
 	b = &common.Block{Data: &common.BlockData{Data: [][]byte{envBytes}}, Header: &common.BlockHeader{}}
 	err = v.Validate(b, "foo", 0, 0, policy)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestToApplicationPolicyTranslator_Translate(t *testing.T) {
 	tr := &toApplicationPolicyTranslator{}
 	res, err := tr.Translate(nil)
-	assert.NoError(t, err)
-	assert.Nil(t, res)
+	require.NoError(t, err)
+	require.Nil(t, res)
 
 	res, err = tr.Translate([]byte("barf"))
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "could not unmarshal signature policy envelope: unexpected EOF")
-	assert.Nil(t, res)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "could not unmarshal signature policy envelope: unexpected EOF")
+	require.Nil(t, res)
 
-	res, err = tr.Translate(protoutil.MarshalOrPanic(cauthdsl.SignedByMspMember("the right honourable member for Ipswich")))
-	assert.NoError(t, err)
-	assert.Equal(t, res, protoutil.MarshalOrPanic(&peer.ApplicationPolicy{
+	res, err = tr.Translate(protoutil.MarshalOrPanic(policydsl.SignedByMspMember("the right honourable member for Ipswich")))
+	require.NoError(t, err)
+	require.Equal(t, res, protoutil.MarshalOrPanic(&peer.ApplicationPolicy{
 		Type: &peer.ApplicationPolicy_SignaturePolicy{
-			SignaturePolicy: cauthdsl.SignedByMspMember("the right honourable member for Ipswich"),
+			SignaturePolicy: policydsl.SignedByMspMember("the right honourable member for Ipswich"),
 		},
 	}))
 }
@@ -242,10 +263,14 @@ func (c *mockPolicyChecker) CheckPolicyNoChannel(policyName string, signedProp *
 }
 
 func TestMain(m *testing.M) {
+	code := -1
+	defer func() {
+		os.Exit(code)
+	}()
 	testDir, err := ioutil.TempDir("", "v1.3-validation")
 	if err != nil {
 		fmt.Printf("Could not create temp dir: %s", err)
-		os.Exit(-1)
+		return
 	}
 	defer os.RemoveAll(testDir)
 	ccprovider.SetChaincodesPath(testDir)
@@ -256,20 +281,19 @@ func TestMain(m *testing.M) {
 	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
 	if err != nil {
 		fmt.Printf("Initialize cryptoProvider bccsp failed: %s", err)
-		os.Exit(-1)
 		return
 	}
 
 	id, err = mspmgmt.GetLocalMSP(cryptoProvider).GetDefaultSigningIdentity()
 	if err != nil {
 		fmt.Printf("GetSigningIdentity failed with err %s", err)
-		os.Exit(-1)
+		return
 	}
 
 	sid, err = id.Serialize()
 	if err != nil {
 		fmt.Printf("Serialize failed with err %s", err)
-		os.Exit(-1)
+		return
 	}
 
 	// determine the MSP identifier for the first MSP in the default chain
@@ -278,11 +302,11 @@ func TestMain(m *testing.M) {
 	msps, err := mspMgr.GetMSPs()
 	if err != nil {
 		fmt.Printf("Could not retrieve the MSPs for the chain manager, err %s", err)
-		os.Exit(-1)
+		return
 	}
 	if len(msps) == 0 {
 		fmt.Printf("At least one MSP was expected")
-		os.Exit(-1)
+		return
 	}
 	for _, m := range msps {
 		msp = m
@@ -291,11 +315,11 @@ func TestMain(m *testing.M) {
 	mspid, err = msp.GetIdentifier()
 	if err != nil {
 		fmt.Printf("Failure getting the msp identifier, err %s", err)
-		os.Exit(-1)
+		return
 	}
 
 	// also set the MSP for the "test" chain
 	mspmgmt.XXXSetMSPManager("mycc", mspmgmt.GetManagerForChain("testchannelid"))
 
-	os.Exit(m.Run())
+	code = m.Run()
 }

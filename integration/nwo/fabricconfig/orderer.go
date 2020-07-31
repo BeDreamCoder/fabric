@@ -9,28 +9,29 @@ package fabricconfig
 import "time"
 
 type Orderer struct {
-	General    *General           `yaml:"General,omitempty"`
-	FileLedger *FileLedger        `yaml:"FileLedger,omitempty"`
-	Kafka      *Kafka             `yaml:"Kafka,omitempty"`
-	Operations *OrdererOperations `yaml:"Operations,omitempty"`
+	General              *General              `yaml:"General,omitempty"`
+	FileLedger           *FileLedger           `yaml:"FileLedger,omitempty"`
+	Kafka                *Kafka                `yaml:"Kafka,omitempty"`
+	Operations           *OrdererOperations    `yaml:"Operations,omitempty"`
+	ChannelParticipation *ChannelParticipation `yaml:"ChannelParticipation,omitempty"`
 
 	ExtraProperties map[string]interface{} `yaml:",inline,omitempty"`
 }
 
 type General struct {
-	ListenAddress  string                 `yaml:"ListenAddress,omitempty"`
-	ListenPort     int                    `yaml:"ListenPort,omitempty"`
-	TLS            *OrdererTLS            `yaml:"TLS,omitempty"`
-	Keepalive      *OrdererKeepalive      `yaml:"Keepalive,omitempty"`
-	GenesisMethod  string                 `yaml:"GenesisMethod,omitempty"`
-	GenesisProfile string                 `yaml:"GenesisProfile,omitempty"`
-	GenesisFile    string                 `yaml:"GenesisFile,omitempty"` // will be replaced by the BootstrapFile
-	BootstrapFile  string                 `yaml:"BootstrapFile,omitempty"`
-	LocalMSPDir    string                 `yaml:"LocalMSPDir,omitempty"`
-	LocalMSPID     string                 `yaml:"LocalMSPID,omitempty"`
-	Profile        *OrdererProfile        `yaml:"Profile,omitempty"`
-	BCCSP          *BCCSP                 `yaml:"BCCSP,omitempty"`
-	Authentication *OrdererAuthentication `yaml:"Authentication,omitempty"`
+	ListenAddress   string                 `yaml:"ListenAddress,omitempty"`
+	ListenPort      int                    `yaml:"ListenPort,omitempty"`
+	TLS             *OrdererTLS            `yaml:"TLS,omitempty"`
+	Keepalive       *OrdererKeepalive      `yaml:"Keepalive,omitempty"`
+	BootstrapMethod string                 `yaml:"BootstrapMethod,omitempty"`
+	GenesisProfile  string                 `yaml:"GenesisProfile,omitempty"`
+	GenesisFile     string                 `yaml:"GenesisFile,omitempty"` // will be replaced by the BootstrapFile
+	BootstrapFile   string                 `yaml:"BootstrapFile,omitempty"`
+	LocalMSPDir     string                 `yaml:"LocalMSPDir,omitempty"`
+	LocalMSPID      string                 `yaml:"LocalMSPID,omitempty"`
+	Profile         *OrdererProfile        `yaml:"Profile,omitempty"`
+	BCCSP           *BCCSP                 `yaml:"BCCSP,omitempty"`
+	Authentication  *OrdererAuthentication `yaml:"Authentication,omitempty"`
 
 	ExtraProperties map[string]interface{} `yaml:",inline,omitempty"`
 }
@@ -71,7 +72,6 @@ type OrdererTopic struct {
 
 type FileLedger struct {
 	Location string `yaml:"Location,omitempty"`
-	Prefix   string `yaml:"Prefix,omitempty"`
 }
 
 type Kafka struct {
@@ -120,4 +120,9 @@ type OrdererStatsd struct {
 	Address       string        `yaml:"Address,omitempty"`
 	WriteInterval time.Duration `yaml:"WriteInterval,omitempty"`
 	Prefix        string        `yaml:"Prefix,omitempty"`
+}
+
+type ChannelParticipation struct {
+	Enabled            bool   `yaml:"Enabled"`
+	MaxRequestBodySize string `yaml:"MaxRequestBodySize,omitempty"`
 }

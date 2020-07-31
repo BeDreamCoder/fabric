@@ -8,9 +8,10 @@ package chaincode_test
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
-	"encoding/json"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -21,7 +22,6 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/gbytes"
 )
 
 var _ = Describe("Package", func() {
@@ -77,11 +77,7 @@ var _ = Describe("Package", func() {
 
 			metadata, err := readMetadataFromBytes(pkgTarGzBytes)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(metadata).To(Equal(&chaincode.PackageMetadata{
-				Path:  "normalizedPath",
-				Type:  "testType",
-				Label: "testLabel",
-			}))
+			Expect(metadata).To(MatchJSON(`{"path":"normalizedPath","type":"testType","label":"testLabel"}`))
 		})
 
 		Context("when the path is not provided", func() {
@@ -128,6 +124,17 @@ var _ = Describe("Package", func() {
 			})
 		})
 
+		Context("when the label is invalid", func() {
+			BeforeEach(func() {
+				input.Label = "label with spaces"
+			})
+
+			It("returns an error", func() {
+				err := packager.Package()
+				Expect(err).To(MatchError("invalid label 'label with spaces'. Label must be non-empty, can only consist of alphanumerics, symbols from '.+-_', and can only begin with alphanumerics"))
+			})
+		})
+
 		Context("when the platform registry fails to normalize the path", func() {
 			BeforeEach(func() {
 				mockPlatformRegistry.NormalizePathReturns("", errors.New("cortado"))
@@ -163,12 +170,12 @@ var _ = Describe("Package", func() {
 	})
 
 	Describe("PackageCmd", func() {
-		var (
-			packageCmd *cobra.Command
-		)
+		var packageCmd *cobra.Command
 
 		BeforeEach(func() {
 			packageCmd = chaincode.PackageCmd(nil)
+			packageCmd.SilenceErrors = true
+			packageCmd.SilenceUsage = true
 			packageCmd.SetArgs([]string{
 				"testPackage",
 				"--path=testPath",
@@ -184,7 +191,6 @@ var _ = Describe("Package", func() {
 
 		Context("when more than one argument is provided", func() {
 			BeforeEach(func() {
-				packageCmd = chaincode.PackageCmd(nil)
 				packageCmd.SetArgs([]string{
 					"testPackage",
 					"whatthe",
@@ -199,7 +205,6 @@ var _ = Describe("Package", func() {
 
 		Context("when no argument is provided", func() {
 			BeforeEach(func() {
-				packageCmd = chaincode.PackageCmd(nil)
 				packageCmd.SetArgs([]string{})
 			})
 
@@ -211,8 +216,8 @@ var _ = Describe("Package", func() {
 	})
 })
 
-func readMetadataFromBytes(pkgTarGzBytes []byte) (*chaincode.PackageMetadata, error) {
-	buffer := gbytes.BufferWithBytes(pkgTarGzBytes)
+func readMetadataFromBytes(pkgTarGzBytes []byte) ([]byte, error) {
+	buffer := bytes.NewBuffer(pkgTarGzBytes)
 	gzr, err := gzip.NewReader(buffer)
 	Expect(err).NotTo(HaveOccurred())
 	defer gzr.Close()
@@ -226,10 +231,7 @@ func readMetadataFromBytes(pkgTarGzBytes []byte) (*chaincode.PackageMetadata, er
 			return nil, err
 		}
 		if header.Name == "metadata.json" {
-			jsonDecoder := json.NewDecoder(tr)
-			metadata := &chaincode.PackageMetadata{}
-			err := jsonDecoder.Decode(metadata)
-			return metadata, err
+			return ioutil.ReadAll(tr)
 		}
 	}
 	return nil, errors.New("metadata.json not found")

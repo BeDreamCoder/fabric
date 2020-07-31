@@ -17,12 +17,12 @@ import (
 	"github.com/hyperledger/fabric/common/crypto/tlsgen"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/metrics/disabled"
-	"github.com/hyperledger/fabric/core/comm"
+	"github.com/hyperledger/fabric/internal/pkg/comm"
 	"github.com/hyperledger/fabric/orderer/common/cluster"
 	"github.com/hyperledger/fabric/orderer/common/cluster/mocks"
 	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -59,7 +59,6 @@ var (
 )
 
 func TestStep(t *testing.T) {
-	t.Parallel()
 	dispatcher := &mocks.Dispatcher{}
 
 	svc := &cluster.Service{
@@ -79,7 +78,7 @@ func TestStep(t *testing.T) {
 		dispatcher.On("DispatchConsensus", mock.Anything, consensusRequest.GetConsensusRequest()).Return(nil).Once()
 		dispatcher.On("DispatchConsensus", mock.Anything, consensusRequest.GetConsensusRequest()).Return(io.EOF).Once()
 		err := svc.Step(stream)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 
 	t.Run("Failure", func(t *testing.T) {
@@ -88,12 +87,11 @@ func TestStep(t *testing.T) {
 		stream.On("Recv").Return(consensusRequest, nil).Once()
 		dispatcher.On("DispatchConsensus", mock.Anything, consensusRequest.GetConsensusRequest()).Return(errors.New("oops")).Once()
 		err := svc.Step(stream)
-		assert.EqualError(t, err, "oops")
+		require.EqualError(t, err, "oops")
 	})
 }
 
 func TestSubmitSuccess(t *testing.T) {
-	t.Parallel()
 	dispatcher := &mocks.Dispatcher{}
 
 	stream := &mocks.StepStream{}
@@ -115,7 +113,7 @@ func TestSubmitSuccess(t *testing.T) {
 	dispatcher.On("DispatchSubmit", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		expectedRequest := <-responses
 		actualRequest := args.Get(1).(*orderer.StepRequest)
-		assert.True(t, expectedRequest == actualRequest)
+		require.True(t, expectedRequest == actualRequest)
 	})
 
 	svc := &cluster.Service{
@@ -128,7 +126,7 @@ func TestSubmitSuccess(t *testing.T) {
 	}
 
 	err := svc.Step(stream)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	dispatcher.AssertNumberOfCalls(t, "DispatchSubmit", 2)
 }
 
@@ -142,7 +140,6 @@ func (t tuple) asArray() []interface{} {
 }
 
 func TestSubmitFailure(t *testing.T) {
-	t.Parallel()
 	oops := errors.New("oops")
 	testCases := []struct {
 		name               string
@@ -190,14 +187,12 @@ func TestSubmitFailure(t *testing.T) {
 				Dispatcher: dispatcher,
 			}
 			err := svc.Step(stream)
-			assert.EqualError(t, err, oops.Error())
+			require.EqualError(t, err, oops.Error())
 		})
 	}
 }
 
 func TestIngresStreamsMetrics(t *testing.T) {
-	t.Parallel()
-
 	dispatcher := &mocks.Dispatcher{}
 	dispatcher.On("DispatchConsensus", mock.Anything, mock.Anything).Return(nil)
 
@@ -227,16 +222,15 @@ func TestIngresStreamsMetrics(t *testing.T) {
 
 	svc.Step(stream)
 	// The stream started so stream count incremented from 0 to 1
-	assert.Equal(t, float64(1), testMetrics.ingressStreamsCount.SetArgsForCall(0))
+	require.Equal(t, float64(1), testMetrics.ingressStreamsCount.SetArgsForCall(0))
 	// The stream ended so stream count is decremented from 1 to 0
-	assert.Equal(t, float64(0), testMetrics.ingressStreamsCount.SetArgsForCall(1))
+	require.Equal(t, float64(0), testMetrics.ingressStreamsCount.SetArgsForCall(1))
 }
 
 func TestServiceGRPC(t *testing.T) {
-	t.Parallel()
 	// Check that Service correctly implements the gRPC interface
 	srv, err := comm.NewGRPCServer("127.0.0.1:0", comm.ServerConfig{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	orderer.RegisterClusterServer(srv.Server(), &cluster.Service{
 		Logger:     flogging.MustGetLogger("test"),
 		StepLogger: flogging.MustGetLogger("test"),
@@ -244,16 +238,14 @@ func TestServiceGRPC(t *testing.T) {
 }
 
 func TestExpirationWarningIngress(t *testing.T) {
-	t.Parallel()
-
 	ca, err := tlsgen.NewCA()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	serverCert, err := ca.NewServerCertKeyPair("127.0.0.1")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	clientCert, err := ca.NewClientCertKeyPair()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	dispatcher := &mocks.Dispatcher{}
 	dispatcher.On("DispatchConsensus", mock.Anything, mock.Anything).Return(nil)
@@ -288,7 +280,7 @@ func TestExpirationWarningIngress(t *testing.T) {
 	}
 
 	srv, err := comm.NewGRPCServer("127.0.0.1:0", srvConf)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	orderer.RegisterClusterServer(srv.Server(), svc)
 	go srv.Start()
 	defer srv.Stop()
@@ -305,17 +297,17 @@ func TestExpirationWarningIngress(t *testing.T) {
 	}
 
 	client, err := comm.NewGRPCClient(clientConf)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	conn, err := client.NewConnection(srv.Address())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	cl := orderer.NewClusterClient(conn)
 	stream, err := cl.Step(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = stream.Send(consensusRequest)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// An alert is logged at the first time.
 	select {
@@ -325,7 +317,7 @@ func TestExpirationWarningIngress(t *testing.T) {
 	}
 
 	err = stream.Send(consensusRequest)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// No alerts in a consecutive time.
 	select {
@@ -338,7 +330,7 @@ func TestExpirationWarningIngress(t *testing.T) {
 	time.Sleep(svc.MinimumExpirationWarningInterval + time.Second)
 
 	err = stream.Send(consensusRequest)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// An alert should be logged now after the timeout expired.
 	select {

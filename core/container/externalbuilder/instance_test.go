@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package externalbuilder_test
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -14,14 +15,16 @@ import (
 	"time"
 
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
+	"github.com/onsi/gomega/types"
 
 	"github.com/hyperledger/fabric/common/flogging"
-	"github.com/hyperledger/fabric/core/comm"
 	"github.com/hyperledger/fabric/core/container/ccintf"
 	"github.com/hyperledger/fabric/core/container/externalbuilder"
+	"github.com/hyperledger/fabric/internal/pkg/comm"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 var _ = Describe("Instance", func() {
@@ -40,6 +43,7 @@ var _ = Describe("Instance", func() {
 			Builder: &externalbuilder.Builder{
 				Location: "testdata/goodbuilder",
 				Logger:   logger,
+				MSPID:    "mspid",
 			},
 		}
 	})
@@ -52,15 +56,9 @@ var _ = Describe("Instance", func() {
 
 			err = os.MkdirAll(filepath.Join(instance.ReleaseDir, "chaincode", "server"), 0755)
 			Expect(err).NotTo(HaveOccurred())
-			//initiaze with a well-formed, all fields set, connection.json file
-			ccdata := `{"address": "ccaddress:12345", "tls_required": true, "dial_timeout": "10s", "client_auth_required": true, "key_path": "key.pem", "cert_path": "cert.pem", "root_cert_path": "root.pem"}`
+			// initialize with a well-formed, all fields set, connection.json file
+			ccdata := `{"address": "ccaddress:12345", "tls_required": true, "dial_timeout": "10s", "client_auth_required": true, "client_key": "fake-key", "client_cert": "fake-cert", "root_cert": "fake-root-cert"}`
 			err = ioutil.WriteFile(filepath.Join(instance.ChaincodeServerReleaseDir(), "connection.json"), []byte(ccdata), 0600)
-			Expect(err).NotTo(HaveOccurred())
-			err = ioutil.WriteFile(filepath.Join(instance.ChaincodeServerReleaseDir(), "key.pem"), []byte("fake-key"), 0600)
-			Expect(err).NotTo(HaveOccurred())
-			err = ioutil.WriteFile(filepath.Join(instance.ChaincodeServerReleaseDir(), "cert.pem"), []byte("fake-cert"), 0600)
-			Expect(err).NotTo(HaveOccurred())
-			err = ioutil.WriteFile(filepath.Join(instance.ChaincodeServerReleaseDir(), "root.pem"), []byte("fake-root-cert"), 0600)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -127,31 +125,26 @@ var _ = Describe("Instance", func() {
 
 			err = os.MkdirAll(filepath.Join(releaseDir, "chaincode", "server"), 0755)
 			Expect(err).NotTo(HaveOccurred())
-			err = ioutil.WriteFile(filepath.Join(releaseDir, "key.pem"), []byte("fake-key"), 0600)
-			Expect(err).NotTo(HaveOccurred())
-			err = ioutil.WriteFile(filepath.Join(releaseDir, "cert.pem"), []byte("fake-cert"), 0600)
-			Expect(err).NotTo(HaveOccurred())
-			err = ioutil.WriteFile(filepath.Join(releaseDir, "root.pem"), []byte("fake-root-cert"), 0600)
-			Expect(err).NotTo(HaveOccurred())
 
 			ccuserdata = &externalbuilder.ChaincodeServerUserData{
 				Address:            "ccaddress:12345",
-				DialTimeout:        externalbuilder.Duration{10 * time.Second},
-				TlsRequired:        true,
+				DialTimeout:        externalbuilder.Duration(10 * time.Second),
+				TLSRequired:        true,
 				ClientAuthRequired: true,
-				KeyPath:            "key.pem",
-				CertPath:           "cert.pem",
-				RootCertPath:       "root.pem",
+				ClientKey:          "fake-key",
+				ClientCert:         "fake-cert",
+				RootCert:           "fake-root-cert",
 			}
 		})
+
 		AfterEach(func() {
 			os.RemoveAll(releaseDir)
 		})
+
 		When("chaincode does not provide all info", func() {
 			Context("tls is not provided", func() {
 				It("returns TLS without client auth information", func() {
-					//"tls" missing
-					ccuserdata.TlsRequired = false
+					ccuserdata.TLSRequired = false
 
 					ccinfo, err := ccuserdata.ChaincodeServerInfo(releaseDir)
 					Expect(err).NotTo(HaveOccurred())
@@ -164,9 +157,9 @@ var _ = Describe("Instance", func() {
 					}))
 				})
 			})
+
 			Context("client auth is not provided", func() {
 				It("returns TLS without client auth information", func() {
-					//"client_auth_required" missing
 					ccuserdata.ClientAuthRequired = false
 
 					ccinfo, err := ccuserdata.ChaincodeServerInfo(releaseDir)
@@ -184,10 +177,10 @@ var _ = Describe("Instance", func() {
 					}))
 				})
 			})
+
 			Context("dial timeout not provided", func() {
 				It("returns default dial timeout without dialtimeout", func() {
-					//"dial_timeout" missing
-					ccuserdata.DialTimeout = externalbuilder.Duration{}
+					ccuserdata.DialTimeout = 0
 
 					ccinfo, err := ccuserdata.ChaincodeServerInfo(releaseDir)
 					Expect(err).NotTo(HaveOccurred())
@@ -207,73 +200,74 @@ var _ = Describe("Instance", func() {
 					}))
 				})
 			})
+
 			Context("address is not provided", func() {
 				It("returns missing address error", func() {
-					//"address" missing
 					ccuserdata.Address = ""
 
 					_, err := ccuserdata.ChaincodeServerInfo(releaseDir)
 					Expect(err).To(MatchError("chaincode address not provided"))
 				})
 			})
+
 			Context("key is not provided", func() {
 				It("returns missing key error", func() {
-					//"key" missing
-					ccuserdata.KeyPath = ""
+					ccuserdata.ClientKey = ""
 
 					_, err := ccuserdata.ChaincodeServerInfo(releaseDir)
 					Expect(err).To(MatchError("chaincode tls key not provided"))
 				})
 			})
+
 			Context("cert is not provided", func() {
 				It("returns missing key error", func() {
-					//"cert" missing
-					ccuserdata.CertPath = ""
+					ccuserdata.ClientCert = ""
 
 					_, err := ccuserdata.ChaincodeServerInfo(releaseDir)
 					Expect(err).To(MatchError("chaincode tls cert not provided"))
 				})
 			})
+
 			Context("root cert is not provided", func() {
 				It("returns missing root cert error", func() {
-					//"root" missing
-					ccuserdata.RootCertPath = ""
+					ccuserdata.RootCert = ""
 
 					_, err := ccuserdata.ChaincodeServerInfo(releaseDir)
 					Expect(err).To(MatchError("chaincode tls root cert not provided"))
 				})
 			})
-			Context("cert file is missing", func() {
-				It("returns missing cert file error", func() {
-					//cert file is missing
-					err := os.Remove(filepath.Join(releaseDir, "cert.pem"))
-					Expect(err).NotTo(HaveOccurred())
-
-					_, err = ccuserdata.ChaincodeServerInfo(releaseDir)
-					Expect(err).To(MatchError(ContainSubstring("error reading cert file")))
-				})
-			})
-			Context("key file is missing", func() {
-				It("returns missing key file error", func() {
-					//key file is missing
-					err := os.Remove(filepath.Join(releaseDir, "key.pem"))
-					Expect(err).NotTo(HaveOccurred())
-
-					_, err = ccuserdata.ChaincodeServerInfo(releaseDir)
-					Expect(err).To(MatchError(ContainSubstring("error reading key file")))
-				})
-			})
-			Context("root cert file is missing", func() {
-				It("returns missing root cert file error", func() {
-					//key file is missing
-					err := os.Remove(filepath.Join(releaseDir, "root.pem"))
-					Expect(err).NotTo(HaveOccurred())
-
-					_, err = ccuserdata.ChaincodeServerInfo(releaseDir)
-					Expect(err).To(MatchError(ContainSubstring("error reading root cert file")))
-				})
-			})
 		})
+	})
+
+	Describe("Duration", func() {
+		DescribeTable("Unmarshal",
+			func(input string, expected externalbuilder.Duration, errMatcher types.GomegaMatcher) {
+				var d externalbuilder.Duration
+				err := json.Unmarshal([]byte(input), &d)
+				Expect(err).To(errMatcher)
+			},
+			Entry("Number", `100`, externalbuilder.Duration(100), BeNil()),
+			Entry("Duration", `"1s"`, externalbuilder.Duration(time.Second), BeNil()),
+			Entry("List", `[1, 2, 3]`, externalbuilder.Duration(time.Second), MatchError("invalid duration")),
+			Entry("Nonsense", `"nonsense"`, externalbuilder.Duration(time.Second), MatchError("time: invalid duration nonsense")),
+		)
+
+		DescribeTable("Round Trip",
+			func(d time.Duration) {
+				marshalled, err := json.Marshal(externalbuilder.Duration(d))
+				Expect(err).NotTo(HaveOccurred())
+
+				var unmarshalled externalbuilder.Duration
+				err = json.Unmarshal(marshalled, &unmarshalled)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(unmarshalled).To(Equal(externalbuilder.Duration(d)))
+			},
+			Entry("10ms", 10*time.Millisecond),
+			Entry("10s", 10*time.Second),
+			Entry("10m", 10*time.Minute),
+			Entry("10h", 10*time.Hour),
+		)
 	})
 
 	Describe("Start", func() {
@@ -308,7 +302,7 @@ var _ = Describe("Instance", func() {
 			Consistently(errCh).ShouldNot(Receive())
 
 			err = instance.Stop()
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Eventually(errCh).Should(Receive(MatchError("signal: terminated")))
 		})
 
@@ -326,7 +320,7 @@ var _ = Describe("Instance", func() {
 				Consistently(errCh).ShouldNot(Receive())
 
 				err = instance.Stop()
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 				Eventually(errCh).Should(Receive(MatchError("signal: killed")))
 			})
 		})

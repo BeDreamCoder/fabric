@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"sync"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-chaincode-go/shim"
@@ -20,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/policies"
+	"github.com/hyperledger/fabric/common/policydsl"
 	"github.com/hyperledger/fabric/core/aclmgmt"
 	"github.com/hyperledger/fabric/core/aclmgmt/resources"
 	"github.com/hyperledger/fabric/core/chaincode/lifecycle"
@@ -165,6 +167,8 @@ type SCC struct {
 
 	// BCCSP instance
 	BCCSP bccsp.BCCSP
+
+	PackageCache PackageCache
 }
 
 // PeerShim adapts the peer instance for use with LSCC by providing methods
@@ -201,26 +205,50 @@ func (p *PeerShim) PolicyManager(channelID string) (policies.Manager, bool) {
 func (lscc *SCC) Name() string              { return "lscc" }
 func (lscc *SCC) Chaincode() shim.Chaincode { return lscc }
 
+type PackageCache struct {
+	Mutex             sync.RWMutex
+	ValidatedPackages map[string]*ccprovider.ChaincodeData
+}
+
 type LegacySecurity struct {
-	Support FilesystemSupport
+	Support      FilesystemSupport
+	PackageCache *PackageCache
 }
 
 func (ls *LegacySecurity) SecurityCheckLegacyChaincode(cd *ccprovider.ChaincodeData) error {
-	ccpack, err := ls.Support.GetChaincodeFromLocalStorage(cd.ChaincodeID())
-	if err != nil {
-		return InvalidDeploymentSpecErr(err.Error())
-	}
+	ccid := cd.ChaincodeID()
 
-	// This is 'the big security check', though it's no clear what's being accomplished
-	// here.  Basically, it seems to try to verify that the chaincode defintion matches
-	// what's on the filesystem, which, might include instanatiation policy, but it's
-	// not obvious from the code, and was being checked separately, so we check it
-	// explicitly below.
-	if err = ccpack.ValidateCC(cd); err != nil {
-		return InvalidCCOnFSError(err.Error())
-	}
+	ls.PackageCache.Mutex.RLock()
+	fsData, ok := ls.PackageCache.ValidatedPackages[ccid]
+	ls.PackageCache.Mutex.RUnlock()
 
-	fsData := ccpack.GetChaincodeData()
+	if !ok {
+		ls.PackageCache.Mutex.Lock()
+		defer ls.PackageCache.Mutex.Unlock()
+		fsData, ok = ls.PackageCache.ValidatedPackages[ccid]
+		if !ok {
+			ccpack, err := ls.Support.GetChaincodeFromLocalStorage(cd.ChaincodeID())
+			if err != nil {
+				return InvalidDeploymentSpecErr(err.Error())
+			}
+
+			// This is 'the big security check', though it's no clear what's being accomplished
+			// here.  Basically, it seems to try to verify that the chaincode definition matches
+			// what's on the filesystem, which, might include instantiation policy, but it's
+			// not obvious from the code, and was being checked separately, so we check it
+			// explicitly below.
+			if err = ccpack.ValidateCC(cd); err != nil {
+				return InvalidCCOnFSError(err.Error())
+			}
+
+			if ls.PackageCache.ValidatedPackages == nil {
+				ls.PackageCache.ValidatedPackages = map[string]*ccprovider.ChaincodeData{}
+			}
+
+			fsData = ccpack.GetChaincodeData()
+			ls.PackageCache.ValidatedPackages[ccid] = fsData
+		}
+	}
 
 	// we have the info from the fs, check that the policy
 	// matches the one on the file system if one was specified;
@@ -260,7 +288,8 @@ func (lscc *SCC) ChaincodeEndorsementInfo(channelID, chaincodeName string, qe le
 	}
 
 	ls := &LegacySecurity{
-		Support: lscc.Support,
+		Support:      lscc.Support,
+		PackageCache: &lscc.PackageCache,
 	}
 
 	err = ls.SecurityCheckLegacyChaincode(chaincodeData)
@@ -602,10 +631,7 @@ func (lscc *SCC) getInstalledChaincodes() pb.Response {
 // check validity of channel name
 func (lscc *SCC) isValidChannelName(channel string) bool {
 	// TODO we probably need more checks
-	if channel == "" {
-		return false
-	}
-	return true
+	return channel != ""
 }
 
 // isValidChaincodeName checks the validity of chaincode name. Chaincode names
@@ -693,7 +719,7 @@ func (lscc *SCC) executeInstall(stub shim.ChaincodeStubInterface, ccbytes []byte
 	}
 	<-buildStatus.Done()
 	if err := buildStatus.Err(); err != nil {
-		return errors.WithMessage(err, "could not build chaincode")
+		return errors.WithMessage(err, "chaincode installed to peer but could not build chaincode")
 	}
 
 	md, err := lscc.EbMetadataProvider.PackageMetadata(ccid)
@@ -1003,7 +1029,7 @@ func (lscc *SCC) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 			EP = args[3]
 		} else {
 			mspIDs := lscc.GetMSPIDs(channel)
-			p := cauthdsl.SignedByAnyMember(mspIDs)
+			p := policydsl.SignedByAnyMember(mspIDs)
 			EP, err = protoutil.Marshal(p)
 			if err != nil {
 				return shim.Error(err.Error())

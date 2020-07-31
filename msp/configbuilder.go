@@ -137,16 +137,15 @@ func SetupBCCSPKeystoreConfig(bccspConfig *factory.FactoryOpts, keystoreDir stri
 		bccspConfig = factory.GetDefaultOpts()
 	}
 
-	if bccspConfig.ProviderName == "SW" || bccspConfig.SwOpts != nil {
-		if bccspConfig.SwOpts == nil {
-			bccspConfig.SwOpts = factory.GetDefaultOpts().SwOpts
+	if bccspConfig.Default == "SW" || bccspConfig.SW != nil {
+		if bccspConfig.SW == nil {
+			bccspConfig.SW = factory.GetDefaultOpts().SW
 		}
 
 		// Only override the KeyStorePath if it was left empty
-		if bccspConfig.SwOpts.FileKeystore == nil ||
-			bccspConfig.SwOpts.FileKeystore.KeyStorePath == "" {
-			bccspConfig.SwOpts.Ephemeral = false
-			bccspConfig.SwOpts.FileKeystore = &factory.FileKeystoreOpts{KeyStorePath: keystoreDir}
+		if bccspConfig.SW.FileKeystore == nil ||
+			bccspConfig.SW.FileKeystore.KeyStorePath == "" {
+			bccspConfig.SW.FileKeystore = &factory.FileKeystoreOpts{KeyStorePath: keystoreDir}
 		}
 	}
 
@@ -363,10 +362,16 @@ func getMspConfig(dir string, ID string, sigid *msp.SigningIdentityInfo) (*msp.M
 }
 
 func loadCertificateAt(dir, certificatePath string, ouType string) []byte {
+
+	if certificatePath == "" {
+		mspLogger.Debugf("Specific certificate for %s is not configured", ouType)
+		return nil
+	}
+
 	f := filepath.Join(dir, certificatePath)
 	raw, err := readFile(f)
 	if err != nil {
-		mspLogger.Infof("Failed loading %s certificate at [%s]: [%s]", ouType, f, err)
+		mspLogger.Warnf("Failed loading %s certificate at [%s]: [%s]", ouType, f, err)
 	} else {
 		return raw
 	}

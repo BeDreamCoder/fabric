@@ -10,9 +10,9 @@ values.
 
 In this topic, we're going to cover:
 
-* [What is a Ledger?](#what-is-a-ledger?)
+* [What is a Ledger?](#what-is-a-ledger)
 * [Storing facts about business objects](#ledgers-facts-and-states)
-* [A blockchain ledger](#a-blockchain-ledger)
+* [A blockchain ledger](#the-ledger)
 * [The world state](#world-state)
 * [The blockchain data structure](#blockchain)
 * [How blocks are stored in a blockchain](#blocks)
@@ -40,7 +40,7 @@ is motivated by these same two concerns -- to present the current value of a set
 of ledger states, and to capture the history of the transactions that determined
 these states.
 
-## Ledgers, Facts and States
+## Ledgers, Facts, and States
 
 A ledger doesn't literally store business objects -- instead it stores **facts**
 about those objects. When we say "we store a business object in a ledger" what
@@ -234,11 +234,13 @@ sections
 
 * **Block Metadata**
 
-  This section contains the time when the block was written, as well as the
-  certificate, public key and signature of the block writer. Subsequently, the
-  block committer also adds a valid/invalid indicator for every transaction,
-  though this information is not included in the hash, as that is created when
-  the block is created.
+  This section contains the certificate and signature of the block creator which is used to verify
+  the block by network nodes.
+  Subsequently, the block committer adds a valid/invalid indicator for every transaction into
+  a bitmap that also resides in the block metadata, as well as a hash of the cumulative state updates
+  up until and including that block, in order to detect a state fork.
+  Unlike the block data  and header fields, this section is not an input to the block hash computation.
+
 
 ## Transactions
 
@@ -373,7 +375,7 @@ the same chaincode can access a given namespace.
 
 A blockchain is not namespaced. It contains transactions from many different
 smart contract namespaces. You can read more about chaincode namespaces in this
-[topic](./developapps/chaincodenamespace.html).
+[topic](../developapps/chaincodenamespace.html).
 
 Let's now look at how the concept of a namespace is applied within a Hyperledger
 Fabric channel.
@@ -387,7 +389,7 @@ smart contracts to communicate between channels so that ledger information can
 be accessed between them.
 
 You can read more about how ledgers work with channels in this
-[topic](./developapps/chaincodenamespace.html#channel).
+[topic](../developapps/chaincodenamespace.html#channels).
 
 
 ## More information
